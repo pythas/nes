@@ -9,11 +9,15 @@ impl Bus {
         }
     }
 
+    pub fn load(&mut self, data: &[u8]) {
+        self.ram[0..data.len()].clone_from_slice(data);
+    }
+
     pub fn write(&mut self, address: u16, value: u8) {
         self.ram[address as usize] = value;
     }
 
-    pub fn read(self, address: u16) -> u8 {
+    pub fn read(&self, address: u16) -> u8 {
         self.ram[address as usize]
     }
 }

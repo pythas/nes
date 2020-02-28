@@ -73,46 +73,50 @@ enum Register {
 }
 
 pub struct Cpu {
-    bus: Bus,
-    memory: [u8; 0x10000],
+    pub bus: Bus,
     pc: u16,
     sp: u8,
     a: u8,
     x: u8,
     y: u8,
     p: u8,
+    pub halt: bool,
 }
 
 impl Cpu {
     pub fn new(bus: Bus) -> Cpu {
         Cpu {
             bus,
-            memory: [0; 0x10000],
             pc: 0x400,
             sp: 0,
             a: 0,
             x: 0,
             y: 0,
             p: 0x00,
+            halt: false,
         }
-    }
-
-    pub fn set_bus(&mut self, bus: Bus) {
-
     }
 
     pub fn load(&mut self, path: &str) {
         let buffer = fs::read(path).expect("Could not read ROM.");
 
-        self.memory[0..buffer.len()].clone_from_slice(&buffer[..]);
+        self.bus.load(&buffer[..]);
 
         // print!("{:?}", &self.memory[..]);
     }
 
-    pub fn step(&mut self) {
-        let opcode = self.memory[self.pc as usize];
+    pub fn clock(&mut self) {
+        if self.halt {
+            return;
+        }
 
-        let prev_pc = self.pc;
+        self.step();
+    }
+
+    pub fn step(&mut self) {
+        let opcode = self.bus.read(self.pc);
+
+        let debug_pc = self.pc;
 
         match opcode {
             0x18 => self.clc(),
@@ -122,9 +126,13 @@ impl Cpu {
             0xca => self.dex(),
             0x9a => self.txs(),
             0xf0 => self.beq(Mode::Relative),
+            0x90 => self.bcc(Mode::Relative),
+            0xb0 => self.bcs(Mode::Relative),
             0xd0 => self.bne(Mode::Relative),
+            0x30 => self.bmi(Mode::Relative),
             0x10 => self.bpl(Mode::Relative),
             0x88 => self.dey(),
+            0xa8 => self.tay(),
             0x98 => self.tya(),
             0xaa => self.tax(),
             0xea => self.nop(),
@@ -183,6 +191,16 @@ impl Cpu {
             0xc1 => self.cmp(Mode::IndexedIndirect),
             0xd1 => self.cmp(Mode::IndirectIndexed),
 
+            // CPX
+            0xe0 => self.cpx(Mode::Immediate),
+            0xe4 => self.cpx(Mode::ZeroPage),
+            0xec => self.cpx(Mode::Absolute),
+
+            // CPY
+            0xc0 => self.cpy(Mode::Immediate),
+            0xc4 => self.cpy(Mode::ZeroPage),
+            0xcc => self.cpy(Mode::Absolute),
+
             // JMP
             0x4c => self.jmp(Mode::Absolute),
             0x6c => self.jmp(Mode::Indirect),
@@ -220,29 +238,31 @@ impl Cpu {
             Print(format!("PC: {:x}", self.pc)),
         ).expect("Could not print.");
 
-        let mut col = 0;
-        let mut row = 0;
+        if self.halt {
+            let mut col = 0;
+            let mut row = 0;
 
-        for i in 0x400..0x5F0 {
-            if i == prev_pc {
+            for i in 0x400..0x5F0 {
+                if i == debug_pc {
+                    execute!(
+                        stdout(),
+                        SetBackgroundColor(Color::Red),
+                    ).expect("Could not print.");
+                }
+
                 execute!(
                     stdout(),
-                    SetBackgroundColor(Color::Red),
+                    cursor::MoveTo(col, row),
+                    Print(format!("{:02x}", self.bus.read(i))),
+                    ResetColor,
                 ).expect("Could not print.");
-            }
 
-            execute!(
-                stdout(),
-                cursor::MoveTo(col, row),
-                Print(format!("{:02x}", self.memory[i as usize])),
-                ResetColor,
-            ).expect("Could not print.");
-
-            if (i - 0x3ff) % 16 == 0 {
-                row += 1;
-                col = 0;
-            } else {
-                col += 3;
+                if (i - 0x3ff) % 16 == 0 {
+                    row += 1;
+                    col = 0;
+                } else {
+                    col += 3;
+                }
             }
         }
     }
@@ -271,10 +291,26 @@ impl Cpu {
         }
     }
 
-    fn get_address(&mut self, mode: Mode) -> u16 {
+    fn set_flag_if_zero(&mut self, byte: u8) {
+        if byte == 0 {
+            self.set_flag(Flag::ZeroFlag, 1);
+        } else {
+            self.set_flag(Flag::ZeroFlag, 0);
+        }
+    }
+
+    fn set_flag_if_negative(&mut self, byte: u8) {
+        if byte & (1 << 7) > 0 {
+            self.set_flag(Flag::NegativeFlag, 1);
+        } else {
+            self.set_flag(Flag::NegativeFlag, 0);
+        }
+    }
+
+    fn read_address(&mut self, mode: Mode) -> u16 {
         match mode {
             Mode::Absolute => {
-                let address = ((self.memory[self.pc as usize + 2] as u16) << 8) | self.memory[self.pc as usize + 1] as u16;
+                let address = ((self.bus.read(self.pc + 2) as u16) << 8) | self.bus.read(self.pc + 1) as u16;
                 self.pc += 3;
                 address
             },
@@ -291,9 +327,9 @@ impl Cpu {
             Mode::Indirect => panic!("Indirect not implemented."),
             Mode::IndirectIndexed => panic!("IndirectIndexed not implemented."),
             Mode::Relative => {
-                let offset = self.memory[self.pc as usize + 1] as u16;
-                // println!("--- {:x}", self.memory[self.pc as usize + 1]);
-                offset
+                let address = self.pc + 1;
+                self.pc += 2;
+                address
             },
             Mode::ZeroPage => panic!("ZeroPage not implemented."),
             Mode::ZeroPageX => panic!("ZeroPageX not implemented."),
@@ -301,40 +337,34 @@ impl Cpu {
         }
     }
 
-    // fn read_byte(&mut self, register: Register) -> u8 {
-    //     match register {
-    //         Register::A => self.a,
-    //         Register::X => self.x,
-    //         Register::Y => self.y,
-    //     }
-    // }
+    fn read_operand(&mut self, mode: Mode) -> u8 {
+        let address = self.read_address(mode);
 
-    fn copy_byte(&mut self, register: Register, address: u16) {
-        let byte = self.memory[address as usize];
-
-        match register {
-            Register::A => self.a = byte,
-            Register::X => self.x = byte,
-            Register::Y => self.y = byte,
-        }
-
-        self.set_flag_if_zero(byte);
-        self.set_flag_if_negative(byte);
+        self.bus.read(address)
     }
 
-    fn set_flag_if_zero(&mut self, byte: u8) {
-        if byte == 0 {
+    fn compare(&mut self, a: u8, b: u8) {
+        let result = self.a.wrapping_sub(b);
+
+        self.set_flag_if_negative(result);
+
+        if a == b {
             self.set_flag(Flag::ZeroFlag, 1);
         } else {
             self.set_flag(Flag::ZeroFlag, 0);
         }
+
+        if a >= b {
+            self.set_flag(Flag::CarryFlag, 1);
+        } else {
+            self.set_flag(Flag::CarryFlag, 0);
+        }
     }
 
-    fn set_flag_if_negative(&mut self, byte: u8) {
-        if byte & (1 << 7) > 0 {
-            self.set_flag(Flag::NegativeFlag, 1);
-        } else {
-            self.set_flag(Flag::NegativeFlag, 0);
+    fn branch(&mut self, offset: u16, condition: bool) {
+        if condition {
+            let pc = self.pc.wrapping_add(offset);
+            self.pc = pc;
         }
     }
 
@@ -391,6 +421,13 @@ impl Cpu {
         self.pc += 1;
     }
 
+    fn tay(&mut self) {
+        self.y = self.a;
+        self.set_flag_if_negative(self.a);
+        self.set_flag_if_zero(self.a);
+        self.pc += 1;
+    }
+
     fn tya(&mut self) {
         self.a = self.y;
         self.set_flag_if_negative(self.y);
@@ -410,55 +447,52 @@ impl Cpu {
     }
 
     fn beq(&mut self, mode: Mode) {
-        let offset = self.get_address(mode) as u8;
+        let operand = self.read_operand(mode) as i8 as u16;
+        let condition = self.get_flag(Flag::ZeroFlag) == 1;
 
-        if self.get_flag(Flag::ZeroFlag) == 1 {
-            if offset & 0x80 > 0 {
-                self.pc -= (!(offset as u8) + 1) as u16 - 2;
-            } else {
-                self.pc += offset as u16 + 2;
-            }
-        } else {
-            self.pc += 2;
-        }
+        self.branch(operand, condition);
+    }
+
+    fn bcc(&mut self, mode: Mode) {
+        let operand = self.read_operand(mode) as i8 as u16;
+        let condition = self.get_flag(Flag::CarryFlag) == 0;
+
+        self.branch(operand, condition);
+    }
+
+    fn bcs(&mut self, mode: Mode) {
+        let operand = self.read_operand(mode) as i8 as u16;
+        let condition = self.get_flag(Flag::CarryFlag) == 1;
+
+        self.branch(operand, condition);
     }
 
     fn bne(&mut self, mode: Mode) {
-        let offset = self.get_address(mode) as u8;
+        let operand = self.read_operand(mode) as i8 as u16;
+        let condition = self.get_flag(Flag::ZeroFlag) == 0;
 
-        if self.get_flag(Flag::ZeroFlag) == 0 {
-            // println!("bne");
-            if offset & 0x80 > 0 {
-                self.pc -= (!(offset as u8) + 1) as u16 - 2;
-            } else {
-                self.pc += offset as u16 + 2;
-            }
-        } else {
-            self.pc += 2;
-        }
+        self.branch(operand, condition);
+    }
+
+    fn bmi(&mut self, mode: Mode) {
+        let operand = self.read_operand(mode) as i8 as u16;
+        let condition = self.get_flag(Flag::NegativeFlag) == 1;
+
+        self.branch(operand, condition);
     }
 
     fn bpl(&mut self, mode: Mode) {
-        let offset = self.get_address(mode) as u8;
+        let operand = self.read_operand(mode) as i8 as u16;
+        let condition = self.get_flag(Flag::NegativeFlag) == 0;
 
-        if self.get_flag(Flag::NegativeFlag) == 0 {
-            // println!("bpl");
-            if offset & 0x80 > 0 {
-                self.pc -= (!(offset as u8) + 1) as u16 - 2;
-            } else {
-                self.pc += offset as u16 + 2;
-            }
-        } else {
-            self.pc += 2;
-        }
+        self.branch(operand, condition);
     }
 
     fn adc(&mut self, mode: Mode) {
-        let address = self.get_address(mode);
-        let byte = self.memory[address as usize] as u16;
+        let operand = self.read_operand(mode) as u16;
 
-        let result = self.a as u16 + byte + self.get_flag(Flag::CarryFlag) as u16;
-        let overflow = if (self.a as u16 ^ result) & (byte ^ result) & 0x80 == 0x80 { 1 } else { 0 };
+        let result = self.a as u16 + operand + self.get_flag(Flag::CarryFlag) as u16;
+        let overflow = if (self.a as u16 ^ result) & (operand ^ result) & 0x80 == 0x80 { 1 } else { 0 };
         let carry = if result > 0xff { 1 } else { 0 };
         let zero = if result & 0x80 > 0  { 1 } else { 0 };
 
@@ -470,10 +504,9 @@ impl Cpu {
     }
 
     fn eor(&mut self, mode: Mode) {
-        let address = self.get_address(mode);
-        let byte = self.memory[address as usize];
+        let operand = self.read_operand(mode);
 
-        self.a = self.a ^ byte;
+        self.a = self.a ^ operand;
 
         self.set_flag_if_negative(self.a);
         self.set_flag_if_zero(self.a);
@@ -481,48 +514,52 @@ impl Cpu {
     }
 
     fn lda(&mut self, mode: Mode) {
-        let address = self.get_address(mode);
+        let operand = self.read_operand(mode);
 
-        self.copy_byte(Register::A, address);
+        self.a = operand;
+
+        self.set_flag_if_zero(operand);
+        self.set_flag_if_negative(operand);
     }
 
     fn ldx(&mut self, mode: Mode) {
-        let address = self.get_address(mode);
+        let operand = self.read_operand(mode);
 
-        self.copy_byte(Register::X, address);
+        self.x = operand;
+
+        self.set_flag_if_zero(operand);
+        self.set_flag_if_negative(operand);
     }
 
     fn ldy(&mut self, mode: Mode) {
-        let address = self.get_address(mode);
+        let operand = self.read_operand(mode);
 
-        self.copy_byte(Register::Y, address);
+        self.y = operand;
+
+        self.set_flag_if_zero(operand);
+        self.set_flag_if_negative(operand);
     }
 
     fn cmp(&mut self, mode: Mode) {
-        let address = self.get_address(mode);
-        let byte = self.memory[address as usize];
+        let operand = self.read_operand(mode);
 
-        // println!("{:x}", byte);
+        self.compare(self.a, operand);
+    }
 
-        let result = (Wrapping(self.a) - Wrapping(byte)).0;
+    fn cpx(&mut self, mode: Mode) {
+        let operand = self.read_operand(mode);
 
-        self.set_flag_if_negative(result);
+        self.compare(self.x, operand);
+    }
 
-        if self.a == byte {
-            self.set_flag(Flag::ZeroFlag, 1);
-        } else {
-            self.set_flag(Flag::ZeroFlag, 0);
-        }
+    fn cpy(&mut self, mode: Mode) {
+        let operand = self.read_operand(mode);
 
-        if self.a >= byte {
-            self.set_flag(Flag::CarryFlag, 1);
-        } else {
-            self.set_flag(Flag::CarryFlag, 0);
-        }
+        self.compare(self.y, operand);
     }
 
     fn jmp(&mut self, mode: Mode) {
-        let address = self.get_address(mode);
+        let address = self.read_address(mode);
 
         if self.pc - 3 == address {
             panic!("JMP to self...");
@@ -532,10 +569,8 @@ impl Cpu {
     }
 
     fn sta(&mut self, mode: Mode) {
-        let address = self.get_address(mode);
+        let address = self.read_address(mode);
 
-        // println!("{:x} {:x} {:x}", self.a, self.pc, address);
-
-        self.memory[address as usize] = self.a;
+        self.bus.write(address, self.a);
     }
 }
