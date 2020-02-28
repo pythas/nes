@@ -357,7 +357,11 @@ impl Cpu {
                 self.pc += 3;
                 address
             },
-            Mode::AbsoluteX => panic!("AbsoluteX not implemented."),
+            Mode::AbsoluteX => {
+                let address = ((self.bus.read(self.pc + 2) as u16) << 8) | self.bus.read(self.pc + 1) as u16 + self.x as u16;
+                self.pc += 3;
+                address
+            },
             Mode::AbsoluteY => panic!("AbsoluteY not implemented."),
             Mode::Accumulator => panic!("Accumulator not implemented."),
             Mode::Immediate => {
@@ -572,6 +576,7 @@ impl Cpu {
         self.push(self.pc as u8);
         self.push(self.p | 0x30);
 
+        self.set_flag(Flag::InterruptDisable, 1);
 
         self.pc = address;
     }
