@@ -14,7 +14,7 @@ fn main() -> crossterm::Result<()> {
     cpu.load("roms\\6502_functional_test.bin");
 
     loop {
-        if poll(Duration::from_millis(1))? {
+        if poll(Duration::from_micros(1))? {
             match read()? {
                 Event::Key(event) => {
                     match event.code {

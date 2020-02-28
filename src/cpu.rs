@@ -21,24 +21,16 @@
  */
 
 use std::fs;
-use std::num::Wrapping;
 use std::io::{stdout, Write};
 
 use crossterm::{
     cursor,
     terminal::{self, ClearType},
     execute,
-    queue,
-    style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
-    ExecutableCommand, Result,
+    style::{Color, Print, ResetColor, SetBackgroundColor},
 };
 
 use crate::Bus;
-
-enum Pc {
-    Next(u16),
-    Abort,
-}
 
 enum Mode {
     Absolute,
@@ -66,12 +58,6 @@ enum Flag {
     NegativeFlag,
 }
 
-enum Register {
-    A,
-    X,
-    Y,
-}
-
 pub struct Cpu {
     pub bus: Bus,
     pc: u16,
@@ -81,6 +67,7 @@ pub struct Cpu {
     y: u8,
     p: u8,
     pub halt: bool,
+    opcode: u8,
 }
 
 impl Cpu {
@@ -94,6 +81,7 @@ impl Cpu {
             y: 0,
             p: 0x00,
             halt: false,
+            opcode: 0,
         }
     }
 
@@ -101,8 +89,6 @@ impl Cpu {
         let buffer = fs::read(path).expect("Could not read ROM.");
 
         self.bus.load(&buffer[..]);
-
-        // print!("{:?}", &self.memory[..]);
     }
 
     pub fn clock(&mut self) {
@@ -115,6 +101,7 @@ impl Cpu {
 
     pub fn step(&mut self) {
         let opcode = self.bus.read(self.pc);
+        self.opcode = opcode;
 
         let debug_pc = self.pc;
 
@@ -131,11 +118,27 @@ impl Cpu {
             0xd0 => self.bne(Mode::Relative),
             0x30 => self.bmi(Mode::Relative),
             0x10 => self.bpl(Mode::Relative),
+            0x50 => self.bvc(Mode::Relative),
+            0x70 => self.bvs(Mode::Relative),
             0x88 => self.dey(),
             0xa8 => self.tay(),
             0x98 => self.tya(),
             0xaa => self.tax(),
+            0x8a => self.txa(),
+            0xba => self.tsx(),
             0xea => self.nop(),
+            0x48 => self.pha(),
+            0x08 => self.php(),
+            0x68 => self.pla(),
+            0x28 => self.plp(),
+            0xe8 => self.inx(),
+            0xc8 => self.iny(),
+            0x00 => self.brk(),
+
+            0xe6 => self.inc(Mode::ZeroPage),
+            0xf6 => self.inc(Mode::ZeroPageX),
+            0xee => self.inc(Mode::Absolute),
+            0xfe => self.inc(Mode::AbsoluteX),
 
             // ADC
             0x69 => self.adc(Mode::Immediate),
@@ -205,44 +208,69 @@ impl Cpu {
             0x4c => self.jmp(Mode::Absolute),
             0x6c => self.jmp(Mode::Indirect),
 
-            // STA
-            0x8d => self.sta(Mode::Absolute),
+            // JSR
+            0x20 => self.jsr(Mode::Absolute),
 
-            _ => panic!("opcode {:x} not implemented.", opcode),
+            // RTS
+            0x60 => self.rts(),
+
+            // STA
+            0x85 => self.sta(Mode::ZeroPage),
+            0x95 => self.sta(Mode::ZeroPageX),
+            0x8d => self.sta(Mode::Absolute),
+            0x9d => self.sta(Mode::AbsoluteX),
+            0x99 => self.sta(Mode::AbsoluteY),
+            0x81 => self.sta(Mode::IndexedIndirect),
+            0x91 => self.sta(Mode::IndirectIndexed),
+
+            // STX
+            0x86 => self.stx(Mode::ZeroPage),
+            0x96 => self.stx(Mode::ZeroPageY),
+            0x8e => self.stx(Mode::Absolute),
+
+            // STY
+            0x84 => self.sty(Mode::ZeroPage),
+            0x94 => self.sty(Mode::ZeroPageX),
+            0x8c => self.sty(Mode::Absolute),
+
+            _ => panic!("opcode {:x} not implemented at {:x}.", opcode, self.pc),
         }
 
-        execute!(
-            stdout(),
-            terminal::Clear(ClearType::All),
-            cursor::Hide,
-            cursor::MoveTo(80, 0),
-            Print("REGISTERS"),
-            cursor::MoveTo(80, 1),
-            Print(format!(" A: {:08b} {:02x}", self.a, self.a)),
-            cursor::MoveTo(80, 2),
-            Print(format!(" X: {:08b} {:02x}", self.x, self.x)),
-            cursor::MoveTo(80, 3),
-            Print(format!(" Y: {:08b} {:02x}", self.y, self.y)),
-            cursor::MoveTo(80, 4),
-            Print(format!("SP: {:08b} {:02x}", self.sp, self.sp)),
-
-            cursor::MoveTo(80, 6),
-            Print(format!("STATUS: {:08b}", self.p)),
-            cursor::MoveTo(80, 7),
-            Print("        NO BDIZC"),
-
-            cursor::MoveTo(80, 9),
-            Print(format!("OPCODE: {:x}", opcode)),
-
-            cursor::MoveTo(80, 11),
-            Print(format!("PC: {:x}", self.pc)),
-        ).expect("Could not print.");
-
+        // Debug
         if self.halt {
+            execute!(
+                stdout(),
+                terminal::Clear(ClearType::All),
+                cursor::Hide,
+                cursor::MoveTo(80, 0),
+                Print("REGISTERS"),
+                cursor::MoveTo(80, 1),
+                Print(format!(" A: {:08b} {:02x}", self.a, self.a)),
+                cursor::MoveTo(80, 2),
+                Print(format!(" X: {:08b} {:02x}", self.x, self.x)),
+                cursor::MoveTo(80, 3),
+                Print(format!(" Y: {:08b} {:02x}", self.y, self.y)),
+                cursor::MoveTo(80, 4),
+                Print(format!("SP: {:08b} {:02x}", self.sp, self.sp)),
+
+                cursor::MoveTo(80, 6),
+                Print(format!("STATUS: {:08b}", self.p)),
+                cursor::MoveTo(80, 7),
+                Print("        NO BDIZC"),
+
+                cursor::MoveTo(80, 9),
+                Print(format!("OPCODE: {:x}", opcode)),
+
+                cursor::MoveTo(80, 11),
+                Print(format!("PC: {:x}", self.pc)),
+            ).expect("Could not print.");
+
             let mut col = 0;
             let mut row = 0;
+            let start = 0x400;
+            let stop = 0x6f0;
 
-            for i in 0x400..0x5F0 {
+            for i in start..stop {
                 if i == debug_pc {
                     execute!(
                         stdout(),
@@ -257,12 +285,27 @@ impl Cpu {
                     ResetColor,
                 ).expect("Could not print.");
 
-                if (i - 0x3ff) % 16 == 0 {
+                if (i - (start - 1)) % 16 == 0 {
                     row += 1;
                     col = 0;
                 } else {
                     col += 3;
                 }
+            }
+
+            execute!(
+                stdout(),
+                cursor::MoveTo(80, 19),
+                Print("STACK"),
+                ResetColor,
+            ).expect("Could not print.");
+
+            for i in 0x1f0..0x1ff {
+                execute!(
+                    stdout(),
+                    cursor::MoveTo(80, 20 + (i - 0x1f0)),
+                    Print(format!("{:02x}", self.bus.read(i))),
+                ).expect("Could not print.");
             }
         }
     }
@@ -321,17 +364,26 @@ impl Cpu {
                 let address = self.pc + 1;
                 self.pc += 2;
                 address
-            }
+            },
             Mode::Implied => panic!("Implied not implemented."),
             Mode::IndexedIndirect => panic!("IndexedIndirect not implemented."),
-            Mode::Indirect => panic!("Indirect not implemented."),
+            Mode::Indirect => {
+                let mut address = ((self.bus.read(self.pc + 2) as u16) << 8) | self.bus.read(self.pc + 1) as u16;
+                address = ((self.bus.read(address + 1) as u16) << 8) | self.bus.read(address) as u16;
+                self.pc += 3;
+                address
+            },
             Mode::IndirectIndexed => panic!("IndirectIndexed not implemented."),
             Mode::Relative => {
                 let address = self.pc + 1;
                 self.pc += 2;
                 address
             },
-            Mode::ZeroPage => panic!("ZeroPage not implemented."),
+            Mode::ZeroPage => {
+                let address = self.bus.read(self.pc + 1) as u16;
+                self.pc += 2;
+                address
+            },
             Mode::ZeroPageX => panic!("ZeroPageX not implemented."),
             Mode::ZeroPageY => panic!("ZeroPageY not implemented."),
         }
@@ -368,12 +420,16 @@ impl Cpu {
         }
     }
 
-    fn push(&mut self) {
-
+    fn push(&mut self, byte: u8) {
+        let address = 0x100 + self.sp as u16;
+        self.bus.write(address, byte);
+        self.sp -= 1;
     }
 
-    fn pop(&mut self) {
-
+    fn pull(&mut self) -> u8 {
+        self.sp += 1;
+        let address = 0x100 + self.sp as u16;
+        self.bus.read(address)
     }
 
     // Single byte
@@ -402,7 +458,7 @@ impl Cpu {
     }
 
     fn dex(&mut self) {
-        self.x = (Wrapping(self.x) - Wrapping(1)).0;
+        self.x = self.x.wrapping_sub(1);
         self.set_flag_if_negative(self.x);
         self.set_flag_if_zero(self.x);
         self.pc += 1;
@@ -415,7 +471,7 @@ impl Cpu {
     }
 
     fn dey(&mut self) {
-        self.y = (Wrapping(self.y) - Wrapping(1)).0;
+        self.y = self.y.wrapping_sub(1);
         self.set_flag_if_negative(self.y);
         self.set_flag_if_zero(self.y);
         self.pc += 1;
@@ -442,8 +498,82 @@ impl Cpu {
         self.pc += 1;
     }
 
+    fn txa(&mut self) {
+        self.a = self.x;
+        self.set_flag_if_negative(self.a);
+        self.set_flag_if_zero(self.a);
+        self.pc += 1;
+    }
+
+    fn tsx(&mut self) {
+        self.x = self.sp;
+        self.set_flag_if_negative(self.x);
+        self.set_flag_if_zero(self.x);
+        self.pc += 1;
+    }
+
     fn nop(&mut self) {
         self.pc += 1;
+    }
+
+    fn pha(&mut self) {
+        self.push(self.a);
+        self.pc += 1;
+    }
+
+    fn php(&mut self) {
+        let p = self.p | 0x30;
+        self.push(p);
+        self.pc += 1;
+    }
+
+    fn pla(&mut self) {
+        self.a = self.pull();
+        self.set_flag_if_negative(self.a);
+        self.set_flag_if_zero(self.a);
+        self.pc += 1;
+    }
+
+    fn plp(&mut self) {
+        self.p = self.pull() & !0x30;
+        self.pc += 1;
+    }
+
+    fn inc(&mut self, mode: Mode) {
+        let address = self.read_address(mode);
+        let byte = self.bus.read(address).wrapping_add(1);
+
+        self.set_flag_if_negative(byte);
+        self.set_flag_if_zero(byte);
+
+        self.bus.write(address, byte);
+
+        self.pc += 1;
+    }
+
+    fn inx(&mut self) {
+        self.x = self.x.wrapping_add(1);
+        self.set_flag_if_negative(self.x);
+        self.set_flag_if_zero(self.x);
+        self.pc += 1;
+    }
+
+    fn iny(&mut self) {
+        self.y = self.y.wrapping_add(1);
+        self.set_flag_if_negative(self.y);
+        self.set_flag_if_zero(self.y);
+        self.pc += 1;
+    }
+
+    fn brk(&mut self) {
+        let address = ((self.bus.read(0xffff) as u16) << 8) | self.bus.read(0xfffe) as u16;
+
+        self.push((self.pc >> 8) as u8);
+        self.push(self.pc as u8);
+        self.push(self.p | 0x30);
+
+
+        self.pc = address;
     }
 
     fn beq(&mut self, mode: Mode) {
@@ -484,6 +614,20 @@ impl Cpu {
     fn bpl(&mut self, mode: Mode) {
         let operand = self.read_operand(mode) as i8 as u16;
         let condition = self.get_flag(Flag::NegativeFlag) == 0;
+
+        self.branch(operand, condition);
+    }
+
+    fn bvc(&mut self, mode: Mode) {
+        let operand = self.read_operand(mode) as i8 as u16;
+        let condition = self.get_flag(Flag::OverflowFlag) == 0;
+
+        self.branch(operand, condition);
+    }
+
+    fn bvs(&mut self, mode: Mode) {
+        let operand = self.read_operand(mode) as i8 as u16;
+        let condition = self.get_flag(Flag::OverflowFlag) == 1;
 
         self.branch(operand, condition);
     }
@@ -568,9 +712,35 @@ impl Cpu {
         self.pc = address;
     }
 
+    fn jsr(&mut self, mode: Mode) {
+        let target_address = self.read_address(mode);
+        let return_address = self.pc - 1;
+
+        self.push((return_address >> 8) as u8);
+        self.push(return_address as u8);
+        self.pc = target_address;
+    }
+
+    fn rts(&mut self) {
+        let return_address = (self.pull() as u16) | (self.pull() as u16) << 8;
+        self.pc = return_address + 1;
+    }
+
     fn sta(&mut self, mode: Mode) {
         let address = self.read_address(mode);
 
         self.bus.write(address, self.a);
+    }
+
+    fn stx(&mut self, mode: Mode) {
+        let address = self.read_address(mode);
+
+        self.bus.write(address, self.x);
+    }
+
+    fn sty(&mut self, mode: Mode) {
+        let address = self.read_address(mode);
+
+        self.bus.write(address, self.y);
     }
 }
