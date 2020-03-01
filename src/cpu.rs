@@ -134,6 +134,10 @@ impl Cpu {
             0xe8 => self.inx(),
             0xc8 => self.iny(),
             0x00 => self.brk(),
+            0x40 => self.rti(),
+            0x38 => self.sec(),
+            0x78 => self.sei(),
+            0xf8 => self.sed(),
 
             0xe6 => self.inc(Mode::ZeroPage),
             0xf6 => self.inc(Mode::ZeroPageX),
@@ -159,6 +163,16 @@ impl Cpu {
             0x59 => self.eor(Mode::AbsoluteY),
             0x41 => self.eor(Mode::IndexedIndirect),
             0x51 => self.eor(Mode::IndirectIndexed),
+
+            // ORA
+            0x09 => self.ora(Mode::Immediate),
+            0x05 => self.ora(Mode::ZeroPage),
+            0x15 => self.ora(Mode::ZeroPageX),
+            0x0d => self.ora(Mode::Absolute),
+            0x1d => self.ora(Mode::AbsoluteX),
+            0x19 => self.ora(Mode::AbsoluteY),
+            0x01 => self.ora(Mode::IndexedIndirect),
+            0x11 => self.ora(Mode::IndirectIndexed),
 
             // LDA
             0xa9 => self.lda(Mode::Immediate),
@@ -267,8 +281,8 @@ impl Cpu {
 
             let mut col = 0;
             let mut row = 0;
-            let start = 0x400;
-            let stop = 0x6f0;
+            let start = 0x0f00;
+            let stop = 0x1000;
 
             for i in start..stop {
                 if i == debug_pc {
@@ -307,6 +321,11 @@ impl Cpu {
                     Print(format!("{:02x}", self.bus.read(i))),
                 ).expect("Could not print.");
             }
+        }
+
+        if self.pc == 0x0f0a {
+            // self.halt = true;
+            // self.set_flag(Flag::CarryFlag, 0);
         }
     }
 
@@ -358,11 +377,15 @@ impl Cpu {
                 address
             },
             Mode::AbsoluteX => {
-                let address = ((self.bus.read(self.pc + 2) as u16) << 8) | self.bus.read(self.pc + 1) as u16 + self.x as u16;
+                let address = (((self.bus.read(self.pc + 2) as u16) << 8) | self.bus.read(self.pc + 1) as u16) + self.x as u16;
                 self.pc += 3;
                 address
             },
-            Mode::AbsoluteY => panic!("AbsoluteY not implemented."),
+            Mode::AbsoluteY => {
+                let address = (((self.bus.read(self.pc + 2) as u16) << 8) | self.bus.read(self.pc + 1) as u16) + self.y as u16;
+                self.pc += 3;
+                address
+            },
             Mode::Accumulator => panic!("Accumulator not implemented."),
             Mode::Immediate => {
                 let address = self.pc + 1;
@@ -389,7 +412,11 @@ impl Cpu {
                 address
             },
             Mode::ZeroPageX => panic!("ZeroPageX not implemented."),
-            Mode::ZeroPageY => panic!("ZeroPageY not implemented."),
+            Mode::ZeroPageY => {
+                let address = self.bus.read(self.pc + 1).wrapping_add(self.y) as u16;
+                self.pc += 2;
+                address
+            }
         }
     }
 
@@ -400,7 +427,7 @@ impl Cpu {
     }
 
     fn compare(&mut self, a: u8, b: u8) {
-        let result = self.a.wrapping_sub(b);
+        let result = a.wrapping_sub(b);
 
         self.set_flag_if_negative(result);
 
@@ -427,11 +454,11 @@ impl Cpu {
     fn push(&mut self, byte: u8) {
         let address = 0x100 + self.sp as u16;
         self.bus.write(address, byte);
-        self.sp -= 1;
+        self.sp = self.sp.wrapping_sub(1);
     }
 
     fn pull(&mut self) -> u8 {
-        self.sp += 1;
+        self.sp = self.sp.wrapping_add(1);
         let address = 0x100 + self.sp as u16;
         self.bus.read(address)
     }
@@ -569,8 +596,28 @@ impl Cpu {
         self.pc += 1;
     }
 
+    fn sec(&mut self) {
+        self.set_flag(Flag::CarryFlag, 1);
+
+        self.pc += 1;
+    }
+
+    fn sei(&mut self) {
+        self.set_flag(Flag::InterruptDisable, 1);
+
+        self.pc += 1;
+    }
+
+    fn sed(&mut self) {
+        self.set_flag(Flag::DecimalMode, 1);
+
+        self.pc += 1;
+    }
+
     fn brk(&mut self) {
-        let address = ((self.bus.read(0xffff) as u16) << 8) | self.bus.read(0xfffe) as u16;
+        self.pc += 2;
+
+        let address = self.bus.read(0xfffe) as u16 | (self.bus.read(0xffff) as u16) << 8;
 
         self.push((self.pc >> 8) as u8);
         self.push(self.pc as u8);
@@ -581,9 +628,21 @@ impl Cpu {
         self.pc = address;
     }
 
+    fn rti(&mut self) {
+        self.p = self.pull() & !0x30;
+        self.pc = (self.pull() as u16) | (self.pull() as u16) << 8;
+    }
+
     fn beq(&mut self, mode: Mode) {
         let operand = self.read_operand(mode) as i8 as u16;
         let condition = self.get_flag(Flag::ZeroFlag) == 1;
+
+        self.branch(operand, condition);
+    }
+
+    fn bne(&mut self, mode: Mode) {
+        let operand = self.read_operand(mode) as i8 as u16;
+        let condition = self.get_flag(Flag::ZeroFlag) == 0;
 
         self.branch(operand, condition);
     }
@@ -602,13 +661,6 @@ impl Cpu {
         self.branch(operand, condition);
     }
 
-    fn bne(&mut self, mode: Mode) {
-        let operand = self.read_operand(mode) as i8 as u16;
-        let condition = self.get_flag(Flag::ZeroFlag) == 0;
-
-        self.branch(operand, condition);
-    }
-
     fn bmi(&mut self, mode: Mode) {
         let operand = self.read_operand(mode) as i8 as u16;
         let condition = self.get_flag(Flag::NegativeFlag) == 1;
@@ -623,16 +675,16 @@ impl Cpu {
         self.branch(operand, condition);
     }
 
-    fn bvc(&mut self, mode: Mode) {
+    fn bvs(&mut self, mode: Mode) {
         let operand = self.read_operand(mode) as i8 as u16;
-        let condition = self.get_flag(Flag::OverflowFlag) == 0;
+        let condition = self.get_flag(Flag::OverflowFlag) == 1;
 
         self.branch(operand, condition);
     }
 
-    fn bvs(&mut self, mode: Mode) {
+    fn bvc(&mut self, mode: Mode) {
         let operand = self.read_operand(mode) as i8 as u16;
-        let condition = self.get_flag(Flag::OverflowFlag) == 1;
+        let condition = self.get_flag(Flag::OverflowFlag) == 0;
 
         self.branch(operand, condition);
     }
@@ -659,7 +711,15 @@ impl Cpu {
 
         self.set_flag_if_negative(self.a);
         self.set_flag_if_zero(self.a);
+    }
 
+    fn ora(&mut self, mode: Mode) {
+        let operand = self.read_operand(mode);
+
+        self.a = self.a | operand;
+
+        self.set_flag_if_negative(self.a);
+        self.set_flag_if_zero(self.a);
     }
 
     fn lda(&mut self, mode: Mode) {
