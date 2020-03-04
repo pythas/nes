@@ -1,23 +1,6 @@
 /**
  * TODO: set_flag_if_x should also branch and set to 0 if false...
  *
- * y = 1 OR 0bxxxxxxxx
- * get bit    = x & (y << n)
- * set bit    = x | (y << n)
- * unset bit  = x & !(y << n)
- * toggle bit = x ^ (y << n)
- *
- * unions för p?
- *
- * implement bus struct in module
- * - devices:
- *    - cpu
- *          write - use bus
- *          read - use bus
- *    - ram
- * - write addr: u16
- *      - if addr => 0 && addr <= 0xfff
- * - read addr: u16 -> u8
  */
 
 use std::fs;
@@ -54,6 +37,7 @@ enum Flag {
     InterruptDisable,
     DecimalMode,
     BreakCommand,
+    Unused,
     OverflowFlag,
     NegativeFlag,
 }
@@ -79,7 +63,7 @@ impl Cpu {
             a: 0,
             x: 0,
             y: 0,
-            p: 0x00,
+            p: 0x20,
             halt: false,
             opcode: 0,
         }
@@ -144,6 +128,38 @@ impl Cpu {
             0xee => self.inc(Mode::Absolute),
             0xfe => self.inc(Mode::AbsoluteX),
 
+            // ASL
+            0x0a => self.asl(Mode::Accumulator),
+            0x06 => self.asl(Mode::ZeroPage),
+            0x16 => self.asl(Mode::ZeroPageX),
+            0x0e => self.asl(Mode::Absolute),
+            0x1e => self.asl(Mode::AbsoluteX),
+
+            // LSR
+            0x4a => self.lsr(Mode::Accumulator),
+            0x46 => self.lsr(Mode::ZeroPage),
+            0x56 => self.lsr(Mode::ZeroPageX),
+            0x4e => self.lsr(Mode::Absolute),
+            0x5e => self.lsr(Mode::AbsoluteX),
+
+            // ROL
+            0x2a => self.rol(Mode::Accumulator),
+            0x26 => self.rol(Mode::ZeroPage),
+            0x36 => self.rol(Mode::ZeroPageX),
+            0x2e => self.rol(Mode::Absolute),
+            0x3e => self.rol(Mode::AbsoluteX),
+
+            // ROR
+            0x6a => self.ror(Mode::Accumulator),
+            0x66 => self.ror(Mode::ZeroPage),
+            0x76 => self.ror(Mode::ZeroPageX),
+            0x6e => self.ror(Mode::Absolute),
+            0x7e => self.ror(Mode::AbsoluteX),
+
+            // BIT
+            0x24 => self.bit(Mode::ZeroPage),
+            0x2c => self.bit(Mode::Absolute),
+
             // ADC
             0x69 => self.adc(Mode::Immediate),
             0x65 => self.adc(Mode::ZeroPage),
@@ -194,9 +210,9 @@ impl Cpu {
             // LDY
             0xa0 => self.ldy(Mode::Immediate),
             0xa4 => self.ldy(Mode::ZeroPage),
-            0xb4 => self.ldy(Mode::ZeroPageY),
+            0xb4 => self.ldy(Mode::ZeroPageX),
             0xac => self.ldy(Mode::Absolute),
-            0xbc => self.ldy(Mode::AbsoluteY),
+            0xbc => self.ldy(Mode::AbsoluteX),
 
             // CMP
             0xc9 => self.cmp(Mode::Immediate),
@@ -281,8 +297,8 @@ impl Cpu {
 
             let mut col = 0;
             let mut row = 0;
-            let start = 0x0f00;
-            let stop = 0x1000;
+            let start = 0x2a50;
+            let stop = 0x2b50;
 
             for i in start..stop {
                 if i == debug_pc {
@@ -323,33 +339,34 @@ impl Cpu {
             }
         }
 
-        if self.pc == 0x0f0a {
-            // self.halt = true;
-            // self.set_flag(Flag::CarryFlag, 0);
+        if self.pc == 0x2a51 {
+            self.halt = true;
         }
     }
 
     fn set_flag(&mut self, flag: Flag, value: u8) {
         match flag {
-            Flag::CarryFlag => self.p = (self.p & !(1 << 0)) | (value << 0),
-            Flag::ZeroFlag => self.p = (self.p & !(1 << 1)) | (value << 1),
-            Flag::InterruptDisable => self.p = (self.p & !(1 << 2)) | (value << 2),
-            Flag::DecimalMode => self.p = (self.p & !(1 << 3)) | (value << 3),
-            Flag::BreakCommand => self.p = (self.p & !(1 << 4)) | (value << 4),
-            Flag::OverflowFlag => self.p = (self.p & !(1 << 6)) | (value << 6),
-            Flag::NegativeFlag => self.p = (self.p & !(1 << 7)) | (value << 7),
+            Flag::CarryFlag =>          self.p = (self.p & !(1 << 0)) | (value << 0),
+            Flag::ZeroFlag =>           self.p = (self.p & !(1 << 1)) | (value << 1),
+            Flag::InterruptDisable =>   self.p = (self.p & !(1 << 2)) | (value << 2),
+            Flag::DecimalMode =>        self.p = (self.p & !(1 << 3)) | (value << 3),
+            Flag::BreakCommand =>       self.p = (self.p & !(1 << 4)) | (value << 4),
+            Flag::Unused =>             self.p = (self.p & !(1 << 5)) | (value << 5),
+            Flag::OverflowFlag =>       self.p = (self.p & !(1 << 6)) | (value << 6),
+            Flag::NegativeFlag =>       self.p = (self.p & !(1 << 7)) | (value << 7),
         }
     }
 
     fn get_flag(&mut self, flag: Flag) -> u8 {
         match flag {
-            Flag::CarryFlag => if self.p & (1 << 0) > 0 { 1 } else { 0 },
-            Flag::ZeroFlag => if self.p & (1 << 1) > 0 { 1 } else { 0 },
-            Flag::InterruptDisable => if self.p & (1 << 2) > 0 { 1 } else { 0 },
-            Flag::DecimalMode => if self.p & (1 << 3) > 0 { 1 } else { 0 },
-            Flag::BreakCommand => if self.p & (1 << 4) > 0 { 1 } else { 0 },
-            Flag::OverflowFlag => if self.p & (1 << 6) > 0 { 1 } else { 0 },
-            Flag::NegativeFlag => if self.p & (1 << 7) > 0 { 1 } else { 0 },
+            Flag::CarryFlag =>          if self.p & (1 << 0) > 0 { 1 } else { 0 },
+            Flag::ZeroFlag =>           if self.p & (1 << 1) > 0 { 1 } else { 0 },
+            Flag::InterruptDisable =>   if self.p & (1 << 2) > 0 { 1 } else { 0 },
+            Flag::DecimalMode =>        if self.p & (1 << 3) > 0 { 1 } else { 0 },
+            Flag::BreakCommand =>       if self.p & (1 << 4) > 0 { 1 } else { 0 },
+            Flag::Unused =>             if self.p & (1 << 5) > 0 { 1 } else { 0 },
+            Flag::OverflowFlag =>       if self.p & (1 << 6) > 0 { 1 } else { 0 },
+            Flag::NegativeFlag =>       if self.p & (1 << 7) > 0 { 1 } else { 0 },
         }
     }
 
@@ -386,21 +403,33 @@ impl Cpu {
                 self.pc += 3;
                 address
             },
-            Mode::Accumulator => panic!("Accumulator not implemented."),
+            Mode::Accumulator => {
+                0x0000
+            },
             Mode::Immediate => {
                 let address = self.pc + 1;
                 self.pc += 2;
                 address
             },
             Mode::Implied => panic!("Implied not implemented."),
-            Mode::IndexedIndirect => panic!("IndexedIndirect not implemented."),
+            Mode::IndexedIndirect => {
+                let operand = self.bus.read(self.pc + 1);
+                let address = ((self.bus.read(operand.wrapping_add(self.x + 1) as u16) as u16) << 8) | self.bus.read(operand.wrapping_add(self.x) as u16) as u16;
+                self.pc += 2;
+                address
+            },
             Mode::Indirect => {
                 let mut address = ((self.bus.read(self.pc + 2) as u16) << 8) | self.bus.read(self.pc + 1) as u16;
                 address = ((self.bus.read(address + 1) as u16) << 8) | self.bus.read(address) as u16;
                 self.pc += 3;
                 address
             },
-            Mode::IndirectIndexed => panic!("IndirectIndexed not implemented."),
+            Mode::IndirectIndexed => {
+                let operand = self.bus.read(self.pc + 1) as u16;
+                let address = (((self.bus.read(operand + 1) as u16) << 8) | self.bus.read(operand) as u16) + self.y as u16;
+                self.pc += 2;
+                address
+            },
             Mode::Relative => {
                 let address = self.pc + 1;
                 self.pc += 2;
@@ -411,7 +440,11 @@ impl Cpu {
                 self.pc += 2;
                 address
             },
-            Mode::ZeroPageX => panic!("ZeroPageX not implemented."),
+            Mode::ZeroPageX => {
+                let address = self.bus.read(self.pc + 1).wrapping_add(self.x) as u16;
+                self.pc += 2;
+                address
+            }
             Mode::ZeroPageY => {
                 let address = self.bus.read(self.pc + 1).wrapping_add(self.y) as u16;
                 self.pc += 2;
@@ -553,8 +586,8 @@ impl Cpu {
     }
 
     fn php(&mut self) {
-        let p = self.p | 0x30;
-        self.push(p);
+        self.set_flag(Flag::BreakCommand, 1);
+        self.push(self.p);
         self.pc += 1;
     }
 
@@ -566,20 +599,19 @@ impl Cpu {
     }
 
     fn plp(&mut self) {
-        self.p = self.pull() & !0x30;
+        self.p = self.pull();
+        self.set_flag(Flag::Unused, 1);
         self.pc += 1;
     }
 
     fn inc(&mut self, mode: Mode) {
         let address = self.read_address(mode);
-        let byte = self.bus.read(address).wrapping_add(1);
+        let operand = self.bus.read(address).wrapping_add(1);
 
-        self.set_flag_if_negative(byte);
-        self.set_flag_if_zero(byte);
+        self.set_flag_if_negative(operand);
+        self.set_flag_if_zero(operand);
 
-        self.bus.write(address, byte);
-
-        self.pc += 1;
+        self.bus.write(address, operand);
     }
 
     fn inx(&mut self) {
@@ -617,11 +649,13 @@ impl Cpu {
     fn brk(&mut self) {
         self.pc += 2;
 
+        self.set_flag(Flag::BreakCommand, 1);
+
         let address = self.bus.read(0xfffe) as u16 | (self.bus.read(0xffff) as u16) << 8;
 
         self.push((self.pc >> 8) as u8);
         self.push(self.pc as u8);
-        self.push(self.p | 0x30);
+        self.push(self.p);
 
         self.set_flag(Flag::InterruptDisable, 1);
 
@@ -629,8 +663,10 @@ impl Cpu {
     }
 
     fn rti(&mut self) {
-        self.p = self.pull() & !0x30;
+        self.p = self.pull();
         self.pc = (self.pull() as u16) | (self.pull() as u16) << 8;
+
+        self.set_flag(Flag::Unused, 1);
     }
 
     fn beq(&mut self, mode: Mode) {
@@ -687,6 +723,125 @@ impl Cpu {
         let condition = self.get_flag(Flag::OverflowFlag) == 0;
 
         self.branch(operand, condition);
+    }
+
+    fn asl(&mut self, mode: Mode) {
+        if let Mode::Accumulator = mode {
+            self.pc += 1;
+
+            let mut operand = self.a as u16;
+
+            operand <<= 1;
+
+            self.set_flag(Flag::CarryFlag, if operand > 0xff { 1 } else { 0 });
+            self.set_flag(Flag::ZeroFlag, if operand & 0x00ff == 0x00 { 1 } else { 0 });
+            self.set_flag(Flag::NegativeFlag, if operand & 0x80 > 0 { 1 } else { 0 });
+
+            self.a = operand as u8;
+        } else {
+            let address = self.read_address(mode);
+            let mut operand = self.bus.read(address) as u16;
+
+            operand <<= 1;
+
+            self.set_flag(Flag::CarryFlag, if operand > 0xff { 1 } else { 0 });
+            self.set_flag(Flag::ZeroFlag, if operand & 0x00ff == 0x00 { 1 } else { 0 });
+            self.set_flag(Flag::NegativeFlag, if operand & 0x80 > 0 { 1 } else { 0 });
+
+            self.bus.write(address, operand as u8);
+        }
+    }
+
+    fn lsr(&mut self, mode: Mode) {
+        if let Mode::Accumulator = mode {
+            self.pc += 1;
+
+            let mut operand = self.a as u16;
+
+            self.set_flag(Flag::CarryFlag, if operand & 1 > 0 { 1 } else { 0 });
+
+            operand >>= 1;
+
+            self.set_flag(Flag::ZeroFlag, if operand & 0x00ff == 0x00 { 1 } else { 0 });
+            self.set_flag(Flag::NegativeFlag, if operand & 0x80 > 0 { 1 } else { 0 });
+
+            self.a = operand as u8;
+        } else {
+            let address = self.read_address(mode);
+            let mut operand = self.bus.read(address) as u16;
+
+            self.set_flag(Flag::CarryFlag, if operand & 1 > 0 { 1 } else { 0 });
+
+            operand >>= 1;
+
+            self.set_flag(Flag::ZeroFlag, if operand & 0x00ff == 0x00 { 1 } else { 0 });
+            self.set_flag(Flag::NegativeFlag, if operand & 0x80 > 0 { 1 } else { 0 });
+
+            self.bus.write(address, operand as u8);
+        }
+    }
+
+    fn rol(&mut self, mode: Mode) {
+        if let Mode::Accumulator = mode {
+            self.pc += 1;
+
+            let operand = self.a as u16;
+
+            let result = (operand << 1) | self.get_flag(Flag::CarryFlag) as u16;
+
+            self.set_flag(Flag::CarryFlag, if result > 0xff { 1 } else { 0 });
+            self.set_flag_if_zero(result as u8);
+            self.set_flag_if_negative(result as u8);
+
+            self.a = result as u8;
+        } else {
+            let address = self.read_address(mode);
+            let operand = self.bus.read(address) as u16;
+
+            let result = (operand << 1) | self.get_flag(Flag::CarryFlag) as u16;
+
+            self.set_flag(Flag::CarryFlag, if result > 0xff { 1 } else { 0 });
+            self.set_flag_if_zero(result as u8);
+            self.set_flag_if_negative(result as u8);
+
+            self.bus.write(address, result as u8);
+        }
+    }
+
+    fn ror(&mut self, mode: Mode) {
+        if let Mode::Accumulator = mode {
+            self.pc += 1;
+
+            let operand = self.a;
+
+            let result = ((operand as u16) >> 1) | ((self.get_flag(Flag::CarryFlag) as u16) << 7);
+
+            self.set_flag(Flag::CarryFlag, if operand & 0x01 != 0 { 1 } else { 0 });
+            self.set_flag_if_zero(result as u8);
+            self.set_flag_if_negative(result as u8);
+
+            self.a = result as u8;
+        } else {
+            let address = self.read_address(mode);
+            let operand = self.bus.read(address);
+
+            let result = ((operand as u16) >> 1) | ((self.get_flag(Flag::CarryFlag) as u16) << 7);
+
+            self.set_flag(Flag::CarryFlag, if operand & 0x01 != 0 { 1 } else { 0 });
+            self.set_flag_if_zero(result as u8);
+            self.set_flag_if_negative(result as u8);
+
+            self.bus.write(address, result as u8);
+        }
+    }
+
+    fn bit(&mut self, mode: Mode) {
+        let operand = self.read_operand(mode);
+        let result = self.a & operand;
+
+        self.set_flag_if_zero(result);
+        self.set_flag(Flag::OverflowFlag, if operand & (1 << 6) > 0 { 1 } else { 0 });
+        self.set_flag(Flag::NegativeFlag, if operand & (1 << 7) > 0 { 1 } else { 0 });
     }
 
     fn adc(&mut self, mode: Mode) {
