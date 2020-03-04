@@ -4,6 +4,7 @@
  */
 
 use std::fs;
+use std::fs::OpenOptions;
 use std::io::{stdout, Write};
 
 use crossterm::{
@@ -14,6 +15,7 @@ use crossterm::{
 };
 
 use crate::Bus;
+use crate::Disassembler;
 
 enum Mode {
     Absolute,
@@ -44,7 +46,7 @@ enum Flag {
 
 pub struct Cpu {
     pub bus: Bus,
-    pc: u16,
+    pub pc: u16,
     sp: u8,
     a: u8,
     x: u8,
@@ -52,13 +54,14 @@ pub struct Cpu {
     p: u8,
     pub halt: bool,
     opcode: u8,
+    disassembler: Disassembler
 }
 
 impl Cpu {
-    pub fn new(bus: Bus) -> Cpu {
+    pub fn new(bus: Bus, disassembler: Disassembler) -> Cpu {
         Cpu {
             bus,
-            pc: 0x400,
+            pc: 0,
             sp: 0,
             a: 0,
             x: 0,
@@ -66,13 +69,14 @@ impl Cpu {
             p: 0x20,
             halt: false,
             opcode: 0,
+            disassembler,
         }
     }
 
     pub fn load(&mut self, path: &str) {
         let buffer = fs::read(path).expect("Could not read ROM.");
 
-        self.bus.load(&buffer[..]);
+        self.bus.load(&buffer[0x0010..0x4000]);
     }
 
     pub fn clock(&mut self) {
@@ -88,14 +92,15 @@ impl Cpu {
         self.opcode = opcode;
 
         let debug_pc = self.pc;
+        let debug_r = (self.a, self.x, self.y, self.p, self.sp);
 
         match opcode {
-            0x18 => self.clc(),
-            0xd8 => self.cld(),
-            0x58 => self.cli(),
-            0xb8 => self.clv(),
-            0xca => self.dex(),
-            0x9a => self.txs(),
+            0x18 => self.clc(Mode::Implied),
+            0xd8 => self.cld(Mode::Implied),
+            0x58 => self.cli(Mode::Implied),
+            0xb8 => self.clv(Mode::Implied),
+            0xca => self.dex(Mode::Implied),
+            0x9a => self.txs(Mode::Implied),
             0xf0 => self.beq(Mode::Relative),
             0x90 => self.bcc(Mode::Relative),
             0xb0 => self.bcs(Mode::Relative),
@@ -104,29 +109,36 @@ impl Cpu {
             0x10 => self.bpl(Mode::Relative),
             0x50 => self.bvc(Mode::Relative),
             0x70 => self.bvs(Mode::Relative),
-            0x88 => self.dey(),
-            0xa8 => self.tay(),
-            0x98 => self.tya(),
-            0xaa => self.tax(),
-            0x8a => self.txa(),
-            0xba => self.tsx(),
-            0xea => self.nop(),
-            0x48 => self.pha(),
-            0x08 => self.php(),
-            0x68 => self.pla(),
-            0x28 => self.plp(),
-            0xe8 => self.inx(),
-            0xc8 => self.iny(),
-            0x00 => self.brk(),
-            0x40 => self.rti(),
-            0x38 => self.sec(),
-            0x78 => self.sei(),
-            0xf8 => self.sed(),
+            0x88 => self.dey(Mode::Implied),
+            0xa8 => self.tay(Mode::Implied),
+            0x98 => self.tya(Mode::Implied),
+            0xaa => self.tax(Mode::Implied),
+            0x8a => self.txa(Mode::Implied),
+            0xba => self.tsx(Mode::Implied),
+            0xea => self.nop(Mode::Implied),
+            0x48 => self.pha(Mode::Implied),
+            0x08 => self.php(Mode::Implied),
+            0x68 => self.pla(Mode::Implied),
+            0x28 => self.plp(Mode::Implied),
+            0xe8 => self.inx(Mode::Implied),
+            0xc8 => self.iny(Mode::Implied),
+            0x00 => self.brk(Mode::Implied),
+            0x40 => self.rti(Mode::Implied),
+            0x38 => self.sec(Mode::Implied),
+            0x78 => self.sei(Mode::Implied),
+            0xf8 => self.sed(Mode::Implied),
 
+            // INC
             0xe6 => self.inc(Mode::ZeroPage),
             0xf6 => self.inc(Mode::ZeroPageX),
             0xee => self.inc(Mode::Absolute),
             0xfe => self.inc(Mode::AbsoluteX),
+
+            // DEC
+            0xc6 => self.dec(Mode::ZeroPage),
+            0xd6 => self.dec(Mode::ZeroPageX),
+            0xce => self.dec(Mode::Absolute),
+            0xde => self.dec(Mode::AbsoluteX),
 
             // ASL
             0x0a => self.asl(Mode::Accumulator),
@@ -169,6 +181,26 @@ impl Cpu {
             0x79 => self.adc(Mode::AbsoluteY),
             0x61 => self.adc(Mode::IndexedIndirect),
             0x71 => self.adc(Mode::IndirectIndexed),
+
+            // SBC
+            0xe9 => self.sbc(Mode::Immediate),
+            0xe5 => self.sbc(Mode::ZeroPage),
+            0xf5 => self.sbc(Mode::ZeroPageX),
+            0xed => self.sbc(Mode::Absolute),
+            0xfd => self.sbc(Mode::AbsoluteX),
+            0xf9 => self.sbc(Mode::AbsoluteY),
+            0xe1 => self.sbc(Mode::IndexedIndirect),
+            0xf1 => self.sbc(Mode::IndirectIndexed),
+
+            // AND
+            0x29 => self.and(Mode::Immediate),
+            0x25 => self.and(Mode::ZeroPage),
+            0x35 => self.and(Mode::ZeroPageX),
+            0x2d => self.and(Mode::Absolute),
+            0x3d => self.and(Mode::AbsoluteX),
+            0x39 => self.and(Mode::AbsoluteY),
+            0x21 => self.and(Mode::IndexedIndirect),
+            0x31 => self.and(Mode::IndirectIndexed),
 
             // EOR
             0x49 => self.eor(Mode::Immediate),
@@ -242,7 +274,7 @@ impl Cpu {
             0x20 => self.jsr(Mode::Absolute),
 
             // RTS
-            0x60 => self.rts(),
+            0x60 => self.rts(Mode::Implied),
 
             // STA
             0x85 => self.sta(Mode::ZeroPage),
@@ -267,81 +299,97 @@ impl Cpu {
         }
 
         // Debug
-        if self.halt {
-            execute!(
-                stdout(),
-                terminal::Clear(ClearType::All),
-                cursor::Hide,
-                cursor::MoveTo(80, 0),
-                Print("REGISTERS"),
-                cursor::MoveTo(80, 1),
-                Print(format!(" A: {:08b} {:02x}", self.a, self.a)),
-                cursor::MoveTo(80, 2),
-                Print(format!(" X: {:08b} {:02x}", self.x, self.x)),
-                cursor::MoveTo(80, 3),
-                Print(format!(" Y: {:08b} {:02x}", self.y, self.y)),
-                cursor::MoveTo(80, 4),
-                Print(format!("SP: {:08b} {:02x}", self.sp, self.sp)),
+        // if self.halt {
+        //     execute!(
+        //         stdout(),
+        //         terminal::Clear(ClearType::All),
+        //         cursor::Hide,
+        //         cursor::MoveTo(80, 0),
+        //         Print("REGISTERS"),
+        //         cursor::MoveTo(80, 1),
+        //         Print(format!(" A: {:08b} {:02x}", self.a, self.a)),
+        //         cursor::MoveTo(80, 2),
+        //         Print(format!(" X: {:08b} {:02x}", self.x, self.x)),
+        //         cursor::MoveTo(80, 3),
+        //         Print(format!(" Y: {:08b} {:02x}", self.y, self.y)),
+        //         cursor::MoveTo(80, 4),
+        //         Print(format!("SP: {:08b} {:02x}", self.sp, self.sp)),
 
-                cursor::MoveTo(80, 6),
-                Print(format!("STATUS: {:08b}", self.p)),
-                cursor::MoveTo(80, 7),
-                Print("        NO BDIZC"),
+        //         cursor::MoveTo(80, 6),
+        //         Print(format!("STATUS: {:08b}", self.p)),
+        //         cursor::MoveTo(80, 7),
+        //         Print("        NO BDIZC"),
 
-                cursor::MoveTo(80, 9),
-                Print(format!("OPCODE: {:x}", opcode)),
+        //         cursor::MoveTo(80, 9),
+        //         Print(format!("OPCODE: {:x}", opcode)),
 
-                cursor::MoveTo(80, 11),
-                Print(format!("PC: {:x}", self.pc)),
-            ).expect("Could not print.");
+        //         cursor::MoveTo(80, 11),
+        //         Print(format!("PC: {:x}", self.pc)),
+        //     ).expect("Could not print.");
 
-            let mut col = 0;
-            let mut row = 0;
-            let start = 0x2a50;
-            let stop = 0x2b50;
+        //     let mut col = 0;
+        //     let mut row = 0;
+        //     let start = 0x35a2;
+        //     let stop = 0x37a2;
 
-            for i in start..stop {
-                if i == debug_pc {
-                    execute!(
-                        stdout(),
-                        SetBackgroundColor(Color::Red),
-                    ).expect("Could not print.");
-                }
+        //     for i in start..stop {
+        //         if i == debug_pc {
+        //             execute!(
+        //                 stdout(),
+        //                 SetBackgroundColor(Color::Red),
+        //             ).expect("Could not print.");
+        //         }
 
-                execute!(
-                    stdout(),
-                    cursor::MoveTo(col, row),
-                    Print(format!("{:02x}", self.bus.read(i))),
-                    ResetColor,
-                ).expect("Could not print.");
+        //         execute!(
+        //             stdout(),
+        //             cursor::MoveTo(col, row),
+        //             Print(format!("{:02x}", self.bus.read(i))),
+        //             ResetColor,
+        //         ).expect("Could not print.");
 
-                if (i - (start - 1)) % 16 == 0 {
-                    row += 1;
-                    col = 0;
-                } else {
-                    col += 3;
-                }
-            }
+        //         if (i - (start - 1)) % 16 == 0 {
+        //             row += 1;
+        //             col = 0;
+        //         } else {
+        //             col += 3;
+        //         }
+        //     }
 
-            execute!(
-                stdout(),
-                cursor::MoveTo(80, 19),
-                Print("STACK"),
-                ResetColor,
-            ).expect("Could not print.");
+        //     execute!(
+        //         stdout(),
+        //         cursor::MoveTo(80, 19),
+        //         Print("STACK"),
+        //         ResetColor,
+        //     ).expect("Could not print.");
 
-            for i in 0x1f0..0x1ff {
-                execute!(
-                    stdout(),
-                    cursor::MoveTo(80, 20 + (i - 0x1f0)),
-                    Print(format!("{:02x}", self.bus.read(i))),
-                ).expect("Could not print.");
-            }
-        }
+        //     for i in 0x1f0..0x1ff {
+        //         execute!(
+        //             stdout(),
+        //             cursor::MoveTo(80, 20 + (i - 0x1f0)),
+        //             Print(format!("{:02x}", self.bus.read(i))),
+        //         ).expect("Could not print.");
+        //     }
+        // }
 
-        if self.pc == 0x2a51 {
-            self.halt = true;
-        }
+        // if self.pc == 0x36e0 {
+            // self.halt = true;
+        // }
+
+        // for i in debug_pc..self.pc {
+        //     println!("{:x}", i);
+        // }
+
+
+        let debug_instruction = format!("{:10}", format!("{:02X?}", self.disassembler.get_last()).replace("[", "").replace("]", "").replace(",", ""));
+
+        let debug_str = format!("{:48} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} PPU: {:3}  X CYC:XXX", format!("{:04X}  {} {}", debug_pc, debug_instruction, "---"), debug_r.0, debug_r.1, debug_r.2, debug_r.3, debug_r.4, "X");
+        println!("{}", debug_str);
+
+        // let debug_str_short = format!("{:48}", format!("{:04X}  {} ", debug_pc, debug_instruction));
+
+        // let mut debug_file = OpenOptions::new().append(true).create(true).open("debug.log").unwrap();
+
+        // write!(&mut debug_file, "{}\n", debug_str_short);
     }
 
     fn set_flag(&mut self, flag: Flag, value: u8) {
@@ -387,7 +435,9 @@ impl Cpu {
     }
 
     fn read_address(&mut self, mode: Mode) -> u16 {
-        match mode {
+        let start_pc = self.pc;
+
+        let address = match mode {
             Mode::Absolute => {
                 let address = ((self.bus.read(self.pc + 2) as u16) << 8) | self.bus.read(self.pc + 1) as u16;
                 self.pc += 3;
@@ -404,6 +454,7 @@ impl Cpu {
                 address
             },
             Mode::Accumulator => {
+                self.pc += 1;
                 0x0000
             },
             Mode::Immediate => {
@@ -411,7 +462,10 @@ impl Cpu {
                 self.pc += 2;
                 address
             },
-            Mode::Implied => panic!("Implied not implemented."),
+            Mode::Implied => {
+                self.pc += 1;
+                0x0000
+            },
             Mode::IndexedIndirect => {
                 let operand = self.bus.read(self.pc + 1);
                 let address = ((self.bus.read(operand.wrapping_add(self.x + 1) as u16) as u16) << 8) | self.bus.read(operand.wrapping_add(self.x) as u16) as u16;
@@ -426,7 +480,8 @@ impl Cpu {
             },
             Mode::IndirectIndexed => {
                 let operand = self.bus.read(self.pc + 1) as u16;
-                let address = (((self.bus.read(operand + 1) as u16) << 8) | self.bus.read(operand) as u16) + self.y as u16;
+                // let address = (((self.bus.read(operand + 1) as u16) << 8) | self.bus.read(operand) as u16) + self.y as u16;
+                let address = (((self.bus.read(operand + 1) as u16) << 8) | self.bus.read(operand) as u16).wrapping_add(self.y as u16);
                 self.pc += 2;
                 address
             },
@@ -450,7 +505,19 @@ impl Cpu {
                 self.pc += 2;
                 address
             }
+        };
+
+        let stop_pc = self.pc;
+
+        let mut bytes = Vec::new();
+
+        for debug_address in start_pc..stop_pc {
+            bytes.push(self.bus.read(debug_address));
         }
+
+        self.disassembler.load(bytes.as_slice());
+
+        address
     }
 
     fn read_operand(&mut self, mode: Mode) -> u8 {
@@ -497,111 +564,107 @@ impl Cpu {
     }
 
     // Single byte
-    fn clc(&mut self) {
+    fn clc(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.set_flag(Flag::CarryFlag, 0);
-
-        self.pc += 1;
     }
 
-    fn cld(&mut self) {
+    fn cld(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.set_flag(Flag::DecimalMode, 0);
-
-        self.pc += 1;
     }
 
-    fn cli(&mut self) {
+    fn cli(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.set_flag(Flag::InterruptDisable, 0);
-
-        self.pc += 1;
     }
 
-    fn clv(&mut self) {
+    fn clv(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.set_flag(Flag::OverflowFlag, 0);
-
-        self.pc += 1;
     }
 
-    fn dex(&mut self) {
+    fn dex(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.x = self.x.wrapping_sub(1);
         self.set_flag_if_negative(self.x);
         self.set_flag_if_zero(self.x);
-        self.pc += 1;
     }
 
-    fn txs(&mut self) {
-        self.pc += 1;
+    fn txs(&mut self, mode: Mode) {
+        self.read_address(mode);
 
         self.sp = self.x;
     }
 
-    fn dey(&mut self) {
+    fn dey(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.y = self.y.wrapping_sub(1);
         self.set_flag_if_negative(self.y);
         self.set_flag_if_zero(self.y);
-        self.pc += 1;
     }
 
-    fn tay(&mut self) {
+    fn tay(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.y = self.a;
         self.set_flag_if_negative(self.a);
         self.set_flag_if_zero(self.a);
-        self.pc += 1;
     }
 
-    fn tya(&mut self) {
+    fn tya(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.a = self.y;
         self.set_flag_if_negative(self.y);
         self.set_flag_if_zero(self.y);
-        self.pc += 1;
     }
 
-    fn tax(&mut self) {
+    fn tax(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.x = self.a;
         self.set_flag_if_negative(self.x);
         self.set_flag_if_zero(self.x);
-        self.pc += 1;
     }
 
-    fn txa(&mut self) {
+    fn txa(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.a = self.x;
         self.set_flag_if_negative(self.a);
         self.set_flag_if_zero(self.a);
-        self.pc += 1;
     }
 
-    fn tsx(&mut self) {
+    fn tsx(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.x = self.sp;
         self.set_flag_if_negative(self.x);
         self.set_flag_if_zero(self.x);
-        self.pc += 1;
     }
 
-    fn nop(&mut self) {
-        self.pc += 1;
+    fn nop(&mut self, mode: Mode) {
+        self.read_address(mode);
     }
 
-    fn pha(&mut self) {
+    fn pha(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.push(self.a);
-        self.pc += 1;
     }
 
-    fn php(&mut self) {
+    fn php(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.set_flag(Flag::BreakCommand, 1);
         self.push(self.p);
-        self.pc += 1;
     }
 
-    fn pla(&mut self) {
+    fn pla(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.a = self.pull();
         self.set_flag_if_negative(self.a);
         self.set_flag_if_zero(self.a);
-        self.pc += 1;
     }
 
-    fn plp(&mut self) {
+    fn plp(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.p = self.pull();
         self.set_flag(Flag::Unused, 1);
-        self.pc += 1;
     }
 
     fn inc(&mut self, mode: Mode) {
@@ -614,40 +677,48 @@ impl Cpu {
         self.bus.write(address, operand);
     }
 
-    fn inx(&mut self) {
+    fn dec(&mut self, mode: Mode) {
+        let address = self.read_address(mode);
+        let operand = self.bus.read(address).wrapping_sub(1);
+
+        self.set_flag_if_negative(operand);
+        self.set_flag_if_zero(operand);
+
+        self.bus.write(address, operand);
+    }
+
+    fn inx(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.x = self.x.wrapping_add(1);
         self.set_flag_if_negative(self.x);
         self.set_flag_if_zero(self.x);
-        self.pc += 1;
     }
 
-    fn iny(&mut self) {
+    fn iny(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.y = self.y.wrapping_add(1);
         self.set_flag_if_negative(self.y);
         self.set_flag_if_zero(self.y);
-        self.pc += 1;
     }
 
-    fn sec(&mut self) {
+    fn sec(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.set_flag(Flag::CarryFlag, 1);
-
-        self.pc += 1;
     }
 
-    fn sei(&mut self) {
+    fn sei(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.set_flag(Flag::InterruptDisable, 1);
-
-        self.pc += 1;
     }
 
-    fn sed(&mut self) {
+    fn sed(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.set_flag(Flag::DecimalMode, 1);
-
-        self.pc += 1;
     }
 
-    fn brk(&mut self) {
-        self.pc += 2;
+    fn brk(&mut self, mode: Mode) {
+        self.read_address(mode);
+        self.pc += 1;
 
         self.set_flag(Flag::BreakCommand, 1);
 
@@ -662,7 +733,8 @@ impl Cpu {
         self.pc = address;
     }
 
-    fn rti(&mut self) {
+    fn rti(&mut self, mode: Mode) {
+        self.read_address(mode);
         self.p = self.pull();
         self.pc = (self.pull() as u16) | (self.pull() as u16) << 8;
 
@@ -727,8 +799,7 @@ impl Cpu {
 
     fn asl(&mut self, mode: Mode) {
         if let Mode::Accumulator = mode {
-            self.pc += 1;
-
+            self.read_address(mode);
             let mut operand = self.a as u16;
 
             operand <<= 1;
@@ -754,8 +825,7 @@ impl Cpu {
 
     fn lsr(&mut self, mode: Mode) {
         if let Mode::Accumulator = mode {
-            self.pc += 1;
-
+            self.read_address(mode);
             let mut operand = self.a as u16;
 
             self.set_flag(Flag::CarryFlag, if operand & 1 > 0 { 1 } else { 0 });
@@ -783,8 +853,7 @@ impl Cpu {
 
     fn rol(&mut self, mode: Mode) {
         if let Mode::Accumulator = mode {
-            self.pc += 1;
-
+            self.read_address(mode);
             let operand = self.a as u16;
 
             let result = (operand << 1) | self.get_flag(Flag::CarryFlag) as u16;
@@ -810,8 +879,7 @@ impl Cpu {
 
     fn ror(&mut self, mode: Mode) {
         if let Mode::Accumulator = mode {
-            self.pc += 1;
-
+            self.read_address(mode);
             let operand = self.a;
 
             let result = ((operand as u16) >> 1) | ((self.get_flag(Flag::CarryFlag) as u16) << 7);
@@ -847,16 +915,45 @@ impl Cpu {
     fn adc(&mut self, mode: Mode) {
         let operand = self.read_operand(mode) as u16;
 
-        let result = self.a as u16 + operand + self.get_flag(Flag::CarryFlag) as u16;
-        let overflow = if (self.a as u16 ^ result) & (operand ^ result) & 0x80 == 0x80 { 1 } else { 0 };
+        let result = (self.a as u16) + operand + (self.get_flag(Flag::CarryFlag) as u16);
+        // let overflow = if (!((self.a as u16) ^ result)) & (operand ^ result) & 0x80 == 0x80 { 1 } else { 0 };
+        let overflow =  if !((((self.a as u16) ^ operand) & 0x80) != 0) && ((((self.a as u16) ^ result) & 0x80) != 0) { 1 } else { 0 };
         let carry = if result > 0xff { 1 } else { 0 };
-        let zero = if result & 0x80 > 0  { 1 } else { 0 };
+        let zero = if result & 0x00ff == 0x00 { 1 } else { 0 };
+        let negative = if result & 0x80 > 0 { 1 } else { 0 };
 
         self.set_flag(Flag::OverflowFlag, overflow);
         self.set_flag(Flag::CarryFlag, carry);
         self.set_flag(Flag::ZeroFlag, zero);
+        self.set_flag(Flag::NegativeFlag, negative);
 
         self.a = (result & 0xff) as u8;
+    }
+
+    fn sbc(&mut self, mode: Mode) {
+        let operand = (self.read_operand(mode) as u16) ^ 0x00ff;
+
+        let result = (self.a as u16) + operand + (self.get_flag(Flag::CarryFlag) as u16);
+        let overflow = if ((self.a as u16) ^ result) & (operand ^ result) & 0x80 == 0x80 { 1 } else { 0 };
+        let carry = if result > 0xff { 1 } else { 0 };
+        let zero = if result & 0x00ff == 0x00 { 1 } else { 0 };
+        let negative = if result & 0x80 > 0 { 1 } else { 0 };
+
+        self.set_flag(Flag::OverflowFlag, overflow);
+        self.set_flag(Flag::CarryFlag, carry);
+        self.set_flag(Flag::ZeroFlag, zero);
+        self.set_flag(Flag::NegativeFlag, negative);
+
+        self.a = (result & 0xff) as u8;
+    }
+
+    fn and(&mut self, mode: Mode) {
+        let operand = self.read_operand(mode);
+
+        self.a = self.a & operand;
+
+        self.set_flag_if_negative(self.a);
+        self.set_flag_if_zero(self.a);
     }
 
     fn eor(&mut self, mode: Mode) {
@@ -941,7 +1038,8 @@ impl Cpu {
         self.pc = target_address;
     }
 
-    fn rts(&mut self) {
+    fn rts(&mut self, mode: Mode) {
+        self.read_address(mode);
         let return_address = (self.pull() as u16) | (self.pull() as u16) << 8;
         self.pc = return_address + 1;
     }
