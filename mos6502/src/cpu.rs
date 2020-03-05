@@ -128,7 +128,6 @@ impl Cpu {
             0xaa => self.tax(Mode::Implied),
             0x8a => self.txa(Mode::Implied),
             0xba => self.tsx(Mode::Implied),
-            0xea => self.nop(Mode::Implied),
             0x48 => self.pha(Mode::Implied),
             0x08 => self.php(Mode::Implied),
             0x68 => self.pla(Mode::Implied),
@@ -140,6 +139,31 @@ impl Cpu {
             0x38 => self.sec(Mode::Implied),
             0x78 => self.sei(Mode::Implied),
             0xf8 => self.sed(Mode::Implied),
+
+            // *NOP
+            0x80 => self.nop(Mode::Immediate),
+            0x0c => self.nop(Mode::Absolute),
+            0x1c | 0x3c | 0x5c | 0x7c | 0xdc | 0xfc => self.nop(Mode::AbsoluteX),
+            0x04 | 0x44 | 0x64 => self.nop(Mode::ZeroPage),
+            0x14 | 0x34 | 0x54 | 0x74 | 0xd4 | 0xf4 => self.nop(Mode::ZeroPageX),
+            0x1a | 0x3a | 0x5a | 0x7a | 0xda | 0xfa | 0xea => self.nop(Mode::Implied),
+
+            // *LAX
+            0xa3 => self.lax(Mode::IndexedIndirect),
+            0xa7 => self.lax(Mode::ZeroPage),
+            0xaf => self.lax(Mode::Absolute),
+            0xb3 => self.lax(Mode::IndirectIndexed),
+            0xb7 => self.lax(Mode::ZeroPageY),
+            0xbf => self.lax(Mode::AbsoluteY),
+
+            // *SAX
+            0x83 => self.sax(Mode::IndexedIndirect),
+            0x87 => self.sax(Mode::ZeroPage),
+            0x8f => self.sax(Mode::Absolute),
+            0x97 => self.sax(Mode::ZeroPageY),
+
+            // *DCP
+            0xc3 => self.dcp(Mode::IndexedIndirect),
 
             // INC
             0xe6 => self.inc(Mode::ZeroPage),
@@ -196,7 +220,7 @@ impl Cpu {
             0x71 => self.adc(Mode::IndirectIndexed),
 
             // SBC
-            0xe9 => self.sbc(Mode::Immediate),
+            0xe9 | 0xeb => self.sbc(Mode::Immediate),
             0xe5 => self.sbc(Mode::ZeroPage),
             0xf5 => self.sbc(Mode::ZeroPageX),
             0xed => self.sbc(Mode::Absolute),
@@ -1003,6 +1027,30 @@ impl Cpu {
         let address = self.read_address(mode);
 
         self.bus.write(address, self.y);
+    }
+
+    fn lax(&mut self, mode: Mode) {
+        let operand = self.read_operand(mode);
+        self.a = operand;
+        self.x = self.a;
+        self.set_flag_if_negative(self.x);
+        self.set_flag_if_zero(self.x);
+    }
+
+    fn sax(&mut self, mode: Mode) {
+        let address = self.read_address(mode);
+
+        self.bus.write(address, self.a & self.x);
+    }
+
+    fn dcp(&mut self, mode: Mode) {
+        // let address = self.read_address(mode);
+        // let operand = self.bus.read(address).wrapping_sub(1);
+
+        // self.set_flag_if_negative(operand);
+        // self.set_flag_if_zero(operand);
+
+        // self.bus.write(address, operand);
     }
 }
 
