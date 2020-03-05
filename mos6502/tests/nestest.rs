@@ -26,8 +26,10 @@ fn nestest() {
 
         log.read_line(&mut log_buffer).expect("Could not read line");
 
-        assert_eq!(debug_str.split_at(16).0, log_buffer.split_at(16).0, "PC: {:02x}", state.pc);
+        assert_eq!(log_buffer.split_at(16).0, debug_str.split_at(16).0, "PC: {:02x}", state.pc);
 
-        assert_eq!(debug_str.split_at(debug_str.find("A:").unwrap()).1.split_at(25).0, log_buffer.split_at(log_buffer.find("A:").unwrap()).1.split_at(25).0, "PC: {:02x}", state.pc);
+        assert_eq!(log_buffer.split_at(log_buffer.find("A:").unwrap()).1.split_at(25).0, debug_str.split_at(debug_str.find("A:").unwrap()).1.split_at(25).0, "PC: {:02x}", state.pc);
+
+        log_buffer.clear();
     }
 }
