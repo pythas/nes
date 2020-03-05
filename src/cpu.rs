@@ -1,18 +1,4 @@
-/**
- * TODO: set_flag_if_x should also branch and set to 0 if false...
- *
- */
-
 use std::fs;
-use std::fs::OpenOptions;
-use std::io::{stdout, Write};
-
-use crossterm::{
-    cursor,
-    terminal::{self, ClearType},
-    execute,
-    style::{Color, Print, ResetColor, SetBackgroundColor},
-};
 
 use crate::Bus;
 use crate::Disassembler;
@@ -46,30 +32,26 @@ enum Flag {
 
 pub struct Cpu {
     pub bus: Bus,
+    pub disassembler: Disassembler,
     pub pc: u16,
     sp: u8,
     a: u8,
     x: u8,
     y: u8,
     p: u8,
-    pub halt: bool,
-    opcode: u8,
-    disassembler: Disassembler
 }
 
 impl Cpu {
     pub fn new(bus: Bus, disassembler: Disassembler) -> Cpu {
         Cpu {
             bus,
+            disassembler,
             pc: 0,
-            sp: 0,
+            sp: 0xfd,
             a: 0,
             x: 0,
             y: 0,
-            p: 0x20,
-            halt: false,
-            opcode: 0,
-            disassembler,
+            p: 0x24,
         }
     }
 
@@ -80,19 +62,11 @@ impl Cpu {
     }
 
     pub fn clock(&mut self) {
-        if self.halt {
-            return;
-        }
-
         self.step();
     }
 
     pub fn step(&mut self) {
         let opcode = self.bus.read(self.pc);
-        self.opcode = opcode;
-
-        let debug_pc = self.pc;
-        let debug_r = (self.a, self.x, self.y, self.p, self.sp);
 
         match opcode {
             0x18 => self.clc(Mode::Implied),
@@ -299,97 +273,23 @@ impl Cpu {
         }
 
         // Debug
-        // if self.halt {
-        //     execute!(
-        //         stdout(),
-        //         terminal::Clear(ClearType::All),
-        //         cursor::Hide,
-        //         cursor::MoveTo(80, 0),
-        //         Print("REGISTERS"),
-        //         cursor::MoveTo(80, 1),
-        //         Print(format!(" A: {:08b} {:02x}", self.a, self.a)),
-        //         cursor::MoveTo(80, 2),
-        //         Print(format!(" X: {:08b} {:02x}", self.x, self.x)),
-        //         cursor::MoveTo(80, 3),
-        //         Print(format!(" Y: {:08b} {:02x}", self.y, self.y)),
-        //         cursor::MoveTo(80, 4),
-        //         Print(format!("SP: {:08b} {:02x}", self.sp, self.sp)),
+        // let debug_instruction = format!("{:10}", format!("{:02X?}", self.disassembler.get_last()).replace("[", "").replace("]", "").replace(",", ""));
 
-        //         cursor::MoveTo(80, 6),
-        //         Print(format!("STATUS: {:08b}", self.p)),
-        //         cursor::MoveTo(80, 7),
-        //         Print("        NO BDIZC"),
-
-        //         cursor::MoveTo(80, 9),
-        //         Print(format!("OPCODE: {:x}", opcode)),
-
-        //         cursor::MoveTo(80, 11),
-        //         Print(format!("PC: {:x}", self.pc)),
-        //     ).expect("Could not print.");
-
-        //     let mut col = 0;
-        //     let mut row = 0;
-        //     let start = 0x35a2;
-        //     let stop = 0x37a2;
-
-        //     for i in start..stop {
-        //         if i == debug_pc {
-        //             execute!(
-        //                 stdout(),
-        //                 SetBackgroundColor(Color::Red),
-        //             ).expect("Could not print.");
-        //         }
-
-        //         execute!(
-        //             stdout(),
-        //             cursor::MoveTo(col, row),
-        //             Print(format!("{:02x}", self.bus.read(i))),
-        //             ResetColor,
-        //         ).expect("Could not print.");
-
-        //         if (i - (start - 1)) % 16 == 0 {
-        //             row += 1;
-        //             col = 0;
-        //         } else {
-        //             col += 3;
-        //         }
-        //     }
-
-        //     execute!(
-        //         stdout(),
-        //         cursor::MoveTo(80, 19),
-        //         Print("STACK"),
-        //         ResetColor,
-        //     ).expect("Could not print.");
-
-        //     for i in 0x1f0..0x1ff {
-        //         execute!(
-        //             stdout(),
-        //             cursor::MoveTo(80, 20 + (i - 0x1f0)),
-        //             Print(format!("{:02x}", self.bus.read(i))),
-        //         ).expect("Could not print.");
-        //     }
-        // }
-
-        // if self.pc == 0x36e0 {
-            // self.halt = true;
-        // }
-
-        // for i in debug_pc..self.pc {
-        //     println!("{:x}", i);
-        // }
+        // let debug_str = format!("{:48} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} PPU: {:3}  X CYC:XXX", format!("{:04X}  {}{}", debug_pc, debug_instruction, "---"), debug_r.0, debug_r.1, debug_r.2, debug_r.3, debug_r.4, "X");
 
 
-        let debug_instruction = format!("{:10}", format!("{:02X?}", self.disassembler.get_last()).replace("[", "").replace("]", "").replace(",", ""));
 
-        let debug_str = format!("{:48} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} PPU: {:3}  X CYC:XXX", format!("{:04X}  {} {}", debug_pc, debug_instruction, "---"), debug_r.0, debug_r.1, debug_r.2, debug_r.3, debug_r.4, "X");
-        println!("{}", debug_str);
+
+        // println!("{}", debug_str);
+
+        // println!("{}", debug_str.split("A:"));
 
         // let debug_str_short = format!("{:48}", format!("{:04X}  {} ", debug_pc, debug_instruction));
 
         // let mut debug_file = OpenOptions::new().append(true).create(true).open("debug.log").unwrap();
-
         // write!(&mut debug_file, "{}\n", debug_str_short);
+        // write!(&mut debug_file, "{}\n", debug_str);
+
     }
 
     fn set_flag(&mut self, flag: Flag, value: u8) {
@@ -480,8 +380,8 @@ impl Cpu {
             },
             Mode::IndirectIndexed => {
                 let operand = self.bus.read(self.pc + 1) as u16;
-                // let address = (((self.bus.read(operand + 1) as u16) << 8) | self.bus.read(operand) as u16) + self.y as u16;
-                let address = (((self.bus.read(operand + 1) as u16) << 8) | self.bus.read(operand) as u16).wrapping_add(self.y as u16);
+                let address = (((self.bus.read(operand + 1) as u16) << 8) | self.bus.read(operand) as u16) + self.y as u16;
+                // let address = (((self.bus.read(operand + 1) as u16) << 8) | self.bus.read(operand) as u16).wrapping_add(self.y as u16);
                 self.pc += 2;
                 address
             },
