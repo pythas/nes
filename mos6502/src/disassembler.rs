@@ -13,7 +13,7 @@ impl Disassembler {
         self.instructions.push(instruction.to_vec());
     }
 
-    pub fn get_last(&self) -> &[u8] {
-        self.instructions.last().unwrap()
+    pub fn last(&self) -> Option<&Vec<u8>> {
+        self.instructions.last()
     }
 }

@@ -30,28 +30,42 @@ enum Flag {
     NegativeFlag,
 }
 
-pub struct Cpu {
-    pub bus: Bus,
-    pub disassembler: Disassembler,
+pub struct DebugState {
     pub pc: u16,
+    pub sp: u8,
+    pub a: u8,
+    pub x: u8,
+    pub y: u8,
+    pub p: u8,
+    pub instruction: Vec<u8>,
+}
+
+pub struct Cpu {
+    bus: Bus,
+    pc: u16,
     sp: u8,
     a: u8,
     x: u8,
     y: u8,
     p: u8,
+    debug: bool,
+    disassembler: Option<Disassembler>,
+    debug_state: Option<DebugState>,
 }
 
 impl Cpu {
-    pub fn new(bus: Bus, disassembler: Disassembler) -> Cpu {
+    pub fn new() -> Cpu {
         Cpu {
-            bus,
-            disassembler,
+            bus: Bus::new(),
             pc: 0,
-            sp: 0xfd,
+            sp: 0xff,
             a: 0,
             x: 0,
             y: 0,
-            p: 0x24,
+            p: 0x30,
+            debug: false,
+            disassembler: None,
+            debug_state: None,
         }
     }
 
@@ -61,12 +75,37 @@ impl Cpu {
         self.bus.load(&buffer[0x0010..0x4000]);
     }
 
+    pub fn pc(&mut self, pc: u16) {
+        self.pc = pc;
+    }
+
+    pub fn sp(&mut self, sp: u8) {
+        self.sp = sp;
+    }
+
+    pub fn p(&mut self, p: u8) {
+        self.p = p;
+    }
+
+    pub fn debug(&mut self) {
+        self.debug = true;
+        self.disassembler = Some(Disassembler::new());
+    }
+
+    pub fn debug_state(&self) -> Option<&DebugState> {
+        self.debug_state.as_ref()
+    }
+}
+
+impl Cpu {
     pub fn clock(&mut self) {
         self.step();
     }
 
     pub fn step(&mut self) {
         let opcode = self.bus.read(self.pc);
+
+        let debug_state = (self.pc, self.sp, self.a, self.x, self.y, self.p);
 
         match opcode {
             0x18 => self.clc(Mode::Implied),
@@ -272,24 +311,20 @@ impl Cpu {
             _ => panic!("opcode {:x} not implemented at {:x}.", opcode, self.pc),
         }
 
-        // Debug
-        // let debug_instruction = format!("{:10}", format!("{:02X?}", self.disassembler.get_last()).replace("[", "").replace("]", "").replace(",", ""));
-
-        // let debug_str = format!("{:48} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} PPU: {:3}  X CYC:XXX", format!("{:04X}  {}{}", debug_pc, debug_instruction, "---"), debug_r.0, debug_r.1, debug_r.2, debug_r.3, debug_r.4, "X");
-
-
-
-
-        // println!("{}", debug_str);
-
-        // println!("{}", debug_str.split("A:"));
-
-        // let debug_str_short = format!("{:48}", format!("{:04X}  {} ", debug_pc, debug_instruction));
-
-        // let mut debug_file = OpenOptions::new().append(true).create(true).open("debug.log").unwrap();
-        // write!(&mut debug_file, "{}\n", debug_str_short);
-        // write!(&mut debug_file, "{}\n", debug_str);
-
+        if self.debug {
+            self.debug_state = Some(DebugState {
+                pc: debug_state.0,
+                sp: debug_state.1,
+                a: debug_state.2,
+                x: debug_state.3,
+                y: debug_state.4,
+                p: debug_state.5,
+                instruction: match self.disassembler.as_ref().unwrap().last() {
+                    Some(instruction) => instruction.to_vec(),
+                    None => vec!(),
+                },
+            });
+        }
     }
 
     fn set_flag(&mut self, flag: Flag, value: u8) {
@@ -409,13 +444,15 @@ impl Cpu {
 
         let stop_pc = self.pc;
 
-        let mut bytes = Vec::new();
+        if let Some(disassembler) = &mut self.disassembler {
+            let mut bytes = Vec::new();
 
-        for debug_address in start_pc..stop_pc {
-            bytes.push(self.bus.read(debug_address));
+            for debug_address in start_pc..stop_pc {
+                bytes.push(self.bus.read(debug_address));
+            }
+
+            disassembler.load(bytes.as_slice());
         }
-
-        self.disassembler.load(bytes.as_slice());
 
         address
     }
@@ -961,4 +998,9 @@ impl Cpu {
 
         self.bus.write(address, self.y);
     }
+}
+
+#[cfg(test)]
+mod tests {
+    // ...
 }
