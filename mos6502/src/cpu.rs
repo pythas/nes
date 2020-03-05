@@ -415,8 +415,8 @@ impl Cpu {
             },
             Mode::IndirectIndexed => {
                 let operand = self.bus.read(self.pc + 1) as u16;
-                let address = (((self.bus.read(operand + 1) as u16) << 8) | self.bus.read(operand) as u16) + self.y as u16;
-                // let address = (((self.bus.read(operand + 1) as u16) << 8) | self.bus.read(operand) as u16).wrapping_add(self.y as u16);
+                let address = (((self.bus.read((operand + 1) % 256) as u16) << 8) | self.bus.read(operand) as u16).wrapping_add(self.y as u16);
+
                 self.pc += 2;
                 address
             },
@@ -587,8 +587,7 @@ impl Cpu {
 
     fn php(&mut self, mode: Mode) {
         self.read_address(mode);
-        self.set_flag(Flag::BreakCommand, 1);
-        self.push(self.p);
+        self.push(self.p | 0x10);
     }
 
     fn pla(&mut self, mode: Mode) {
@@ -600,8 +599,7 @@ impl Cpu {
 
     fn plp(&mut self, mode: Mode) {
         self.read_address(mode);
-        self.p = self.pull();
-        self.set_flag(Flag::Unused, 1);
+        self.p = self.pull() & 0xEF | 0x20;
     }
 
     fn inc(&mut self, mode: Mode) {
