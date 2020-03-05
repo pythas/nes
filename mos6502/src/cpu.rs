@@ -1,7 +1,7 @@
 use std::fs;
 
-use crate::Bus;
-use crate::Disassembler;
+use crate::bus::Bus;
+use crate::disassembler::Disassembler;
 
 enum Mode {
     Absolute,
