@@ -384,7 +384,7 @@ impl Cpu {
                 address
             },
             Mode::AbsoluteY => {
-                let address = (((self.bus.read(self.pc + 2) as u16) << 8) | self.bus.read(self.pc + 1) as u16) + self.y as u16;
+                let address = (((self.bus.read(self.pc + 2) as u16) << 8) | self.bus.read(self.pc + 1) as u16).wrapping_add(self.y as u16);
                 self.pc += 3;
                 address
             },
@@ -408,15 +408,23 @@ impl Cpu {
                 address
             },
             Mode::Indirect => {
-                let mut address = ((self.bus.read(self.pc + 2) as u16) << 8) | self.bus.read(self.pc + 1) as u16;
-                address = ((self.bus.read(address + 1) as u16) << 8) | self.bus.read(address) as u16;
+                let lo = self.bus.read(self.pc + 1) as u16;
+                let hi = self.bus.read(self.pc + 2) as u16;
+
+                let mut address = (hi << 8) | lo;
+
+                address = if lo == 0xff {
+                    ((self.bus.read(address & 0xff00) as u16) << 8) | self.bus.read(address) as u16
+                } else {
+                    ((self.bus.read(address + 1) as u16) << 8) | self.bus.read(address) as u16
+                };
+
                 self.pc += 3;
                 address
             },
             Mode::IndirectIndexed => {
                 let operand = self.bus.read(self.pc + 1) as u16;
                 let address = (((self.bus.read((operand + 1) % 256) as u16) << 8) | self.bus.read(operand) as u16).wrapping_add(self.y as u16);
-
                 self.pc += 2;
                 address
             },
