@@ -140,7 +140,7 @@ impl Cpu {
             0x78 => self.sei(Mode::Implied),
             0xf8 => self.sed(Mode::Implied),
 
-            // *NOP
+            // NOP
             0x80 => self.nop(Mode::Immediate),
             0x0c => self.nop(Mode::Absolute),
             0x1c | 0x3c | 0x5c | 0x7c | 0xdc | 0xfc => self.nop(Mode::AbsoluteX),
@@ -148,7 +148,7 @@ impl Cpu {
             0x14 | 0x34 | 0x54 | 0x74 | 0xd4 | 0xf4 => self.nop(Mode::ZeroPageX),
             0x1a | 0x3a | 0x5a | 0x7a | 0xda | 0xfa | 0xea => self.nop(Mode::Implied),
 
-            // *LAX
+            // LAX
             0xa3 => self.lax(Mode::IndexedIndirect),
             0xa7 => self.lax(Mode::ZeroPage),
             0xaf => self.lax(Mode::Absolute),
@@ -156,14 +156,65 @@ impl Cpu {
             0xb7 => self.lax(Mode::ZeroPageY),
             0xbf => self.lax(Mode::AbsoluteY),
 
-            // *SAX
+            // SAX
             0x83 => self.sax(Mode::IndexedIndirect),
             0x87 => self.sax(Mode::ZeroPage),
             0x8f => self.sax(Mode::Absolute),
             0x97 => self.sax(Mode::ZeroPageY),
 
-            // *DCP
+            // DCP
             0xc3 => self.dcp(Mode::IndexedIndirect),
+            0xc7 => self.dcp(Mode::ZeroPage),
+            0xcf => self.dcp(Mode::Absolute),
+            0xd3 => self.dcp(Mode::IndirectIndexed),
+            0xd7 => self.dcp(Mode::ZeroPageX),
+            0xdb => self.dcp(Mode::AbsoluteY),
+            0xdf => self.dcp(Mode::AbsoluteX),
+
+            // ISC
+            0xe3 => self.isc(Mode::IndexedIndirect),
+            0xe7 => self.isc(Mode::ZeroPage),
+            0xef => self.isc(Mode::Absolute),
+            0xf3 => self.isc(Mode::IndirectIndexed),
+            0xf7 => self.isc(Mode::ZeroPageX),
+            0xfb => self.isc(Mode::AbsoluteY),
+            0xff => self.isc(Mode::AbsoluteX),
+
+            // SLO
+            0x03 => self.slo(Mode::IndexedIndirect),
+            0x07 => self.slo(Mode::ZeroPage),
+            0x0f => self.slo(Mode::Absolute),
+            0x13 => self.slo(Mode::IndirectIndexed),
+            0x17 => self.slo(Mode::ZeroPageX),
+            0x1b => self.slo(Mode::AbsoluteY),
+            0x1f => self.slo(Mode::AbsoluteX),
+
+            // RLA
+            0x23 => self.rla(Mode::IndexedIndirect),
+            0x27 => self.rla(Mode::ZeroPage),
+            0x2f => self.rla(Mode::Absolute),
+            0x33 => self.rla(Mode::IndirectIndexed),
+            0x37 => self.rla(Mode::ZeroPageX),
+            0x3b => self.rla(Mode::AbsoluteY),
+            0x3f => self.rla(Mode::AbsoluteX),
+
+            // SRE
+            0x43 => self.sre(Mode::IndexedIndirect),
+            0x47 => self.sre(Mode::ZeroPage),
+            0x4f => self.sre(Mode::Absolute),
+            0x53 => self.sre(Mode::IndirectIndexed),
+            0x57 => self.sre(Mode::ZeroPageX),
+            0x5b => self.sre(Mode::AbsoluteY),
+            0x5f => self.sre(Mode::AbsoluteX),
+
+            // RRA
+            0x63 => self.rra(Mode::IndexedIndirect),
+            0x67 => self.rra(Mode::ZeroPage),
+            0x6f => self.rra(Mode::Absolute),
+            0x73 => self.rra(Mode::IndirectIndexed),
+            0x77 => self.rra(Mode::ZeroPageX),
+            0x7b => self.rra(Mode::AbsoluteY),
+            0x7f => self.rra(Mode::AbsoluteX),
 
             // INC
             0xe6 => self.inc(Mode::ZeroPage),
@@ -883,7 +934,6 @@ impl Cpu {
         let operand = self.read_operand(mode) as u16;
 
         let result = (self.a as u16) + operand + (self.get_flag(Flag::CarryFlag) as u16);
-        // let overflow = if (!((self.a as u16) ^ result)) & (operand ^ result) & 0x80 == 0x80 { 1 } else { 0 };
         let overflow =  if !((((self.a as u16) ^ operand) & 0x80) != 0) && ((((self.a as u16) ^ result) & 0x80) != 0) { 1 } else { 0 };
         let carry = if result > 0xff { 1 } else { 0 };
         let zero = if result & 0x00ff == 0x00 { 1 } else { 0 };
@@ -1044,13 +1094,103 @@ impl Cpu {
     }
 
     fn dcp(&mut self, mode: Mode) {
-        // let address = self.read_address(mode);
-        // let operand = self.bus.read(address).wrapping_sub(1);
+        let address = self.read_address(mode);
+        let operand = self.bus.read(address).wrapping_sub(1);
+        self.bus.write(address, operand);
 
-        // self.set_flag_if_negative(operand);
-        // self.set_flag_if_zero(operand);
+        self.compare(self.a, operand);
+    }
 
-        // self.bus.write(address, operand);
+    fn isc(&mut self, mode: Mode) {
+        let address = self.read_address(mode);
+        let mut operand = self.bus.read(address).wrapping_add(1) as u16;
+        self.bus.write(address, operand as u8);
+
+        operand ^= 0x00ff;
+
+        let result = (self.a as u16) + operand + (self.get_flag(Flag::CarryFlag) as u16);
+        let overflow = if ((self.a as u16) ^ result) & (operand ^ result) & 0x80 == 0x80 { 1 } else { 0 };
+        let carry = if result > 0xff { 1 } else { 0 };
+        let zero = if result & 0x00ff == 0x00 { 1 } else { 0 };
+        let negative = if result & 0x80 > 0 { 1 } else { 0 };
+
+        self.set_flag(Flag::OverflowFlag, overflow);
+        self.set_flag(Flag::CarryFlag, carry);
+        self.set_flag(Flag::ZeroFlag, zero);
+        self.set_flag(Flag::NegativeFlag, negative);
+
+        self.a = (result & 0xff) as u8;
+    }
+
+    fn slo(&mut self, mode: Mode) {
+        let address = self.read_address(mode);
+        let mut operand = self.bus.read(address) as u16;
+
+        operand <<= 1;
+        self.bus.write(address, operand as u8);
+
+        operand = self.a as u16 | operand;
+        self.a = operand as u8;
+
+        self.set_flag(Flag::CarryFlag, if operand > 0xff { 1 } else { 0 });
+        self.set_flag(Flag::ZeroFlag, if operand & 0x00ff == 0x00 { 1 } else { 0 });
+        self.set_flag(Flag::NegativeFlag, if operand & 0x80 > 0 { 1 } else { 0 });
+    }
+
+    fn rla(&mut self, mode: Mode) {
+        let address = self.read_address(mode);
+        let mut operand = self.bus.read(address) as u16;
+
+        operand = (operand << 1) | self.get_flag(Flag::CarryFlag) as u16;
+        self.bus.write(address, operand as u8);
+
+        self.set_flag(Flag::CarryFlag, if operand > 0xff { 1 } else { 0 });
+
+        operand = self.a as u16 & operand;
+        self.a = operand as u8;
+
+        self.set_flag_if_zero(operand as u8);
+        self.set_flag_if_negative(operand as u8);
+    }
+
+    fn sre(&mut self, mode: Mode) {
+        let address = self.read_address(mode);
+        let mut operand = self.bus.read(address) as u16;
+
+        self.set_flag(Flag::CarryFlag, if operand & 1 > 0 { 1 } else { 0 });
+
+        operand >>= 1;
+        self.bus.write(address, operand as u8);
+
+        operand = self.a as u16 ^ operand;
+        self.a = operand as u8;
+
+        self.set_flag(Flag::ZeroFlag, if operand & 0x00ff == 0x00 { 1 } else { 0 });
+        self.set_flag(Flag::NegativeFlag, if operand & 0x80 > 0 { 1 } else { 0 });
+    }
+
+    fn rra(&mut self, mode: Mode) {
+        let address = self.read_address(mode);
+        let mut operand = self.bus.read(address) as u16;
+
+        operand = (operand >> 1) | ((self.get_flag(Flag::CarryFlag) as u16) << 7);
+
+        self.set_flag(Flag::CarryFlag, if self.bus.read(address) & 0x01 != 0 { 1 } else { 0 });
+
+        self.bus.write(address, operand as u8);
+
+        let result = (self.a as u16) + operand + (self.get_flag(Flag::CarryFlag) as u16);
+        let overflow =  if !((((self.a as u16) ^ operand) & 0x80) != 0) && ((((self.a as u16) ^ result) & 0x80) != 0) { 1 } else { 0 };
+        let carry = if result > 0xff { 1 } else { 0 };
+        let zero = if result & 0x00ff == 0x00 { 1 } else { 0 };
+        let negative = if result & 0x80 > 0 { 1 } else { 0 };
+
+        self.set_flag(Flag::OverflowFlag, overflow);
+        self.set_flag(Flag::CarryFlag, carry);
+        self.set_flag(Flag::ZeroFlag, zero);
+        self.set_flag(Flag::NegativeFlag, negative);
+
+        self.a = (result & 0xff) as u8;
     }
 }
 

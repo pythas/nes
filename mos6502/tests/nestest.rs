@@ -24,11 +24,15 @@ fn nestest() {
         let instruction = format!("{:10}", format!("{:02X?}", state.instruction).replace("[", "").replace("]", "").replace(",", ""));
         let debug_str = format!("{:48} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} PPU: {:3}  X CYC:XXX", format!("{:04X}  {}{}", state.pc, instruction, "---"), state.a, state.x, state.y, state.p, state.sp, "X");
 
-        log.read_line(&mut log_buffer).expect("Could not read line");
+        let num_bytes = log.read_line(&mut log_buffer).expect("Could not read line");
 
-        assert_eq!(log_buffer.split_at(16).0, debug_str.split_at(16).0, "PC: {:02x}", state.pc);
+        if num_bytes > 0 {
+            assert_eq!(log_buffer.split_at(16).0, debug_str.split_at(16).0, "PC: {:02x}", state.pc);
 
-        assert_eq!(log_buffer.split_at(log_buffer.find("A:").unwrap()).1.split_at(25).0, debug_str.split_at(debug_str.find("A:").unwrap()).1.split_at(25).0, "PC: {:02x}", state.pc);
+            assert_eq!(log_buffer.split_at(log_buffer.find("A:").unwrap()).1.split_at(25).0, debug_str.split_at(debug_str.find("A:").unwrap()).1.split_at(25).0, "PC: {:02x}", state.pc);
+        } else {
+            break;
+        }
 
         log_buffer.clear();
     }
