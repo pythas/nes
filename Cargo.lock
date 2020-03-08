@@ -5,8 +5,16 @@ name = "debug"
 version = "0.1.0"
 dependencies = [
  "mos6502",
+ "nes",
 ]
 
 [[package]]
 name = "mos6502"
 version = "0.1.0"
+
+[[package]]
+name = "nes"
+version = "0.1.0"
+dependencies = [
+ "mos6502",
+]

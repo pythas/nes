@@ -3,4 +3,5 @@
 members = [
     "mos6502",
     "debug",
+    "nes",
 ]

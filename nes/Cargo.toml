@@ -1,5 +1,5 @@
 [package]
-name = "debug"
+name = "nes"
 version = "0.1.0"
 authors = ["Pythas <pythas@gmail.com>"]
 edition = "2018"
@@ -8,4 +8,3 @@ edition = "2018"
 
 [dependencies]
 mos6502 = { path = "../mos6502" }
-nes = { path = "../nes" }

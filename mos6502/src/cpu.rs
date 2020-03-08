@@ -37,6 +37,7 @@ pub struct DebugState {
     pub x: u8,
     pub y: u8,
     pub p: u8,
+    pub clock: u32,
     pub instruction: Vec<u8>,
 }
 
@@ -48,6 +49,7 @@ pub struct Cpu {
     x: u8,
     y: u8,
     p: u8,
+    clock: u32,
     debug: bool,
     disassembler: Option<Disassembler>,
     debug_state: Option<DebugState>,
@@ -63,6 +65,7 @@ impl Cpu {
             x: 0,
             y: 0,
             p: 0x30,
+            clock: 0,
             debug: false,
             disassembler: None,
             debug_state: None,
@@ -87,6 +90,10 @@ impl Cpu {
         self.p = p;
     }
 
+    pub fn clock(&mut self, clock: u32) {
+        self.clock = clock;
+    }
+
     pub fn debug(&mut self) {
         self.debug = true;
         self.disassembler = Some(Disassembler::new());
@@ -98,14 +105,18 @@ impl Cpu {
 }
 
 impl Cpu {
-    pub fn clock(&mut self) {
+    pub fn run(&mut self) {
         self.step();
     }
 
-    pub fn step(&mut self) {
-        let opcode = self.bus.read(self.pc);
+    pub fn tick(&mut self) {
+        self.clock += 1;
+    }
 
-        let debug_state = (self.pc, self.sp, self.a, self.x, self.y, self.p);
+    pub fn step(&mut self) {
+        let opcode = self.read_opcode();
+
+        let debug_state = (self.pc - 1, self.sp, self.a, self.x, self.y, self.p, self.clock);
 
         match opcode {
             0x18 => self.clc(Mode::Implied),
@@ -394,6 +405,7 @@ impl Cpu {
                 x: debug_state.3,
                 y: debug_state.4,
                 p: debug_state.5,
+                clock: debug_state.6,
                 instruction: match self.disassembler.as_ref().unwrap().last() {
                     Some(instruction) => instruction.to_vec(),
                     None => vec!(),
@@ -444,47 +456,53 @@ impl Cpu {
         }
     }
 
+    fn read_opcode(&mut self) -> u8 {
+        let opcode = self.bus.read(self.pc);
+        self.pc += 1;
+        self.tick();
+        opcode
+    }
+
     fn read_address(&mut self, mode: Mode) -> u16 {
         let start_pc = self.pc;
 
         let address = match mode {
             Mode::Absolute => {
-                let address = ((self.bus.read(self.pc + 2) as u16) << 8) | self.bus.read(self.pc + 1) as u16;
-                self.pc += 3;
+                let address = ((self.bus.read(self.pc + 1) as u16) << 8) | self.bus.read(self.pc) as u16;
+                self.pc += 2;
                 address
             },
             Mode::AbsoluteX => {
-                let address = (((self.bus.read(self.pc + 2) as u16) << 8) | self.bus.read(self.pc + 1) as u16) + self.x as u16;
-                self.pc += 3;
+                let address = (((self.bus.read(self.pc + 1) as u16) << 8) | self.bus.read(self.pc) as u16) + self.x as u16;
+                self.pc += 2;
                 address
             },
             Mode::AbsoluteY => {
-                let address = (((self.bus.read(self.pc + 2) as u16) << 8) | self.bus.read(self.pc + 1) as u16).wrapping_add(self.y as u16);
-                self.pc += 3;
+                let address = (((self.bus.read(self.pc + 1) as u16) << 8) | self.bus.read(self.pc) as u16).wrapping_add(self.y as u16);
+                self.pc += 2;
                 address
             },
             Mode::Accumulator => {
-                self.pc += 1;
                 0x0000
             },
             Mode::Immediate => {
-                let address = self.pc + 1;
-                self.pc += 2;
+                let address = self.pc;
+                self.pc += 1;
+                self.tick();
                 address
             },
             Mode::Implied => {
-                self.pc += 1;
                 0x0000
             },
             Mode::IndexedIndirect => {
-                let operand = self.bus.read(self.pc + 1);
+                let operand = self.bus.read(self.pc);
                 let address = ((self.bus.read(operand.wrapping_add(self.x + 1) as u16) as u16) << 8) | self.bus.read(operand.wrapping_add(self.x) as u16) as u16;
-                self.pc += 2;
+                self.pc += 1;
                 address
             },
             Mode::Indirect => {
-                let lo = self.bus.read(self.pc + 1) as u16;
-                let hi = self.bus.read(self.pc + 2) as u16;
+                let lo = self.bus.read(self.pc) as u16;
+                let hi = self.bus.read(self.pc + 1) as u16;
 
                 let mut address = (hi << 8) | lo;
 
@@ -494,33 +512,33 @@ impl Cpu {
                     ((self.bus.read(address + 1) as u16) << 8) | self.bus.read(address) as u16
                 };
 
-                self.pc += 3;
+                self.pc += 2;
                 address
             },
             Mode::IndirectIndexed => {
-                let operand = self.bus.read(self.pc + 1) as u16;
+                let operand = self.bus.read(self.pc) as u16;
                 let address = (((self.bus.read((operand + 1) % 256) as u16) << 8) | self.bus.read(operand) as u16).wrapping_add(self.y as u16);
-                self.pc += 2;
+                self.pc += 1;
                 address
             },
             Mode::Relative => {
-                let address = self.pc + 1;
-                self.pc += 2;
+                let address = self.pc ;
+                self.pc += 1;
                 address
             },
             Mode::ZeroPage => {
-                let address = self.bus.read(self.pc + 1) as u16;
-                self.pc += 2;
+                let address = self.bus.read(self.pc) as u16;
+                self.pc += 1;
                 address
             },
             Mode::ZeroPageX => {
-                let address = self.bus.read(self.pc + 1).wrapping_add(self.x) as u16;
-                self.pc += 2;
+                let address = self.bus.read(self.pc).wrapping_add(self.x) as u16;
+                self.pc += 1;
                 address
             }
             Mode::ZeroPageY => {
-                let address = self.bus.read(self.pc + 1).wrapping_add(self.y) as u16;
-                self.pc += 2;
+                let address = self.bus.read(self.pc).wrapping_add(self.y) as u16;
+                self.pc += 1;
                 address
             }
         };
@@ -530,7 +548,7 @@ impl Cpu {
         if let Some(disassembler) = &mut self.disassembler {
             let mut bytes = Vec::new();
 
-            for debug_address in start_pc..stop_pc {
+            for debug_address in start_pc - 1..stop_pc {
                 bytes.push(self.bus.read(debug_address));
             }
 
@@ -736,7 +754,6 @@ impl Cpu {
 
     fn brk(&mut self, mode: Mode) {
         self.read_address(mode);
-        self.pc += 1;
 
         self.set_flag(Flag::BreakCommand, 1);
 
@@ -1038,10 +1055,6 @@ impl Cpu {
 
     fn jmp(&mut self, mode: Mode) {
         let address = self.read_address(mode);
-
-        if self.pc - 3 == address {
-            panic!("JMP to self...");
-        }
 
         self.pc = address;
     }
