@@ -116,7 +116,7 @@ impl Cpu {
     pub fn step(&mut self) {
         let opcode = self.read_opcode();
 
-        let debug_state = (self.pc - 1, self.sp, self.a, self.x, self.y, self.p, self.clock);
+        let debug_state = (self.pc - 1, self.sp, self.a, self.x, self.y, self.p, self.clock - 1);
 
         match opcode {
             0x18 => self.clc(Mode::Implied),
@@ -459,7 +459,6 @@ impl Cpu {
     fn read_opcode(&mut self) -> u8 {
         let opcode = self.bus.read(self.pc);
         self.pc += 1;
-        self.tick();
         opcode
     }
 
@@ -488,7 +487,6 @@ impl Cpu {
             Mode::Immediate => {
                 let address = self.pc;
                 self.pc += 1;
-                self.tick();
                 address
             },
             Mode::Implied => {
@@ -522,7 +520,7 @@ impl Cpu {
                 address
             },
             Mode::Relative => {
-                let address = self.pc ;
+                let address = self.pc;
                 self.pc += 1;
                 address
             },
