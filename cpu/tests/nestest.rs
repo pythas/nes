@@ -2,7 +2,7 @@ use std::io::{BufReader};
 use std::io::prelude::*;
 use std::fs::File;
 
-use mos6502::cpu::Cpu;
+use cpu::cpu::Cpu;
 
 #[test]
 fn nestest_instructions() {

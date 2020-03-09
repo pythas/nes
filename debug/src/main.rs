@@ -1,13 +1,9 @@
-use mos6502::bus::Bus;
-use mos6502::cpu::Cpu;
+use nes::nes::Nes;
 
 fn main() {
-    // let mut cpu = Cpu::new(Bus::new());
+    let mut nes = Nes::new();
 
-    // cpu.load("debug\\roms\\nestest.nes");
-    // // cpu.pc = 0xc000;
-
-    // loop {
-    //     cpu.clock();
-    // }
+    loop {
+        nes.run();
+    }
 }

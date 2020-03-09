@@ -1,7 +1,7 @@
 [workspace]
 
 members = [
-    "mos6502",
+    "cpu",
     "debug",
     "nes",
 ]

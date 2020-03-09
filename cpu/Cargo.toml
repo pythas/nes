@@ -1,5 +1,5 @@
 [package]
-name = "mos6502"
+name = "cpu"
 version = "0.1.0"
 authors = ["Pythas <pythas@gmail.com>"]
 edition = "2018"
