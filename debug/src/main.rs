@@ -4,6 +4,6 @@ fn main() {
     let mut nes = Nes::new();
 
     loop {
-        nes.run();
+        nes.step();
     }
 }

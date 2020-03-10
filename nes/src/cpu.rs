@@ -105,15 +105,7 @@ impl Cpu {
 }
 
 impl Cpu {
-    pub fn run(&mut self) {
-        self.step();
-    }
-
-    pub fn tick(&mut self, cycles: u8) {
-        self.clock += cycles as u32;
-    }
-
-    pub fn step(&mut self) {
+    pub fn step(&mut self) -> u32 {
         let opcode = self.read_opcode();
 
         let debug_state = (self.pc - 1, self.sp, self.a, self.x, self.y, self.p, self.clock);
@@ -419,6 +411,12 @@ impl Cpu {
                 },
             });
         }
+
+        self.clock
+    }
+
+    fn tick(&mut self, cycles: u8) {
+        self.clock += cycles as u32;
     }
 
     fn set_flag(&mut self, flag: Flag, value: u8) {
