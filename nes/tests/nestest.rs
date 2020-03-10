@@ -2,7 +2,7 @@ use std::io::{BufReader};
 use std::io::prelude::*;
 use std::fs::File;
 
-use cpu::cpu::Cpu;
+use nes::cpu::Cpu;
 
 #[test]
 fn nestest_instructions() {
