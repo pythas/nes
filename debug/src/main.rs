@@ -1,9 +1,19 @@
-use nes::nes::Nes;
+// use nes::nes::Nes;
+use nes::cartridge::Cartridge;
 
 fn main() {
-    let mut nes = Nes::new();
+    // let mut cartridge = Cartridge::new();
+    // cartridge.load("debug\\roms\\Balloon Fight (USA).nes");
 
-    loop {
-        nes.step();
-    }
+    // let a = cartridge.cpu_read(0x8000);
+    // println!("{:02x}", a.unwrap());
+
+
+
+
+    // let mut nes = Nes::new();
+
+    // loop {
+    //     nes.step();
+    // }
 }
