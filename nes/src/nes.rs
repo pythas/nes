@@ -4,7 +4,7 @@ use crate::cpu::Cpu;
 use crate::ppu::Ppu;
 
 pub struct Nes {
-    cpu: Cpu,
+    pub cpu: Cpu,
     cpu_clock: u32,
     ppu_clock: u32,
 }
@@ -21,12 +21,12 @@ impl Nes {
     pub fn step(&mut self) {
         let delta_cpu_clock = self.cpu.step() - self.cpu_clock;
 
-        self.cpu.bus.step(delta_cpu_clock);
+        self.ppu_clock += self.cpu.bus.step(delta_cpu_clock);
 
         self.cpu_clock += delta_cpu_clock;
 
-        println!("CPU: {}", self.cpu_clock);
+        // println!("CPU: {}", self.cpu_clock);
 
-        thread::sleep(time::Duration::from_secs(1));
+        thread::sleep(time::Duration::from_millis(200));
     }
 }

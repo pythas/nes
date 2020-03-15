@@ -60,11 +60,11 @@ impl Cpu {
         Cpu {
             bus: Bus::new(),
             pc: 0,
-            sp: 0xff,
+            sp: 0,
             a: 0,
             x: 0,
             y: 0,
-            p: 0x30,
+            p: 0,
             clock: 0,
             debug: false,
             disassembler: None,
@@ -92,6 +92,18 @@ impl Cpu {
 
     pub fn clock(&mut self, clock: u32) {
         self.clock = clock;
+    }
+
+    pub fn reset(&mut self) {
+        let lo = self.bus.read(0xfffc) as u16;
+        let hi = self.bus.read(0xfffd) as u16;
+        self.pc = (hi << 8) | lo;
+        self.a = 0;
+        self.x = 0;
+        self.y = 0;
+        self.sp = 0xfd;
+        self.p = 0x20;
+        self.clock = 7;
     }
 
     pub fn debug(&mut self) {

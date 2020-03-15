@@ -10,10 +10,12 @@ impl Ppu {
     }
 
     pub fn read(&self, address: u16) -> u8 {
+        println!("PPU READ {:04x}", address);
         0x00
     }
 
     pub fn write(&mut self, address: u16, value: u8) {
+        println!("PPU WRITE {:04x} {:x}", address, value);
     }
 
     pub fn step(&mut self) -> u32 {

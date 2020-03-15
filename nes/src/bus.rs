@@ -35,7 +35,6 @@ impl Bus {
     }
 
     pub fn write(&mut self, address: u16, value: u8) {
-        // self.ram[address as usize] = value;
         match address {
             0x0000..=0x1fff => self.ram[(address & 0x07ff) as usize] = value,
             0x2000..=0x3fff => self.ppu.write(address & 0x0007, value),
@@ -43,11 +42,12 @@ impl Bus {
         }
     }
 
-    pub fn step(&mut self, delta_cpu_clock: u32) {
+    pub fn step(&mut self, delta_cpu_clock: u32) -> u32 {
         for _ in 0..delta_cpu_clock * 3 {
             self.ppu_clock = self.ppu.step();
         }
 
-        println!("PPU: {}", self.ppu_clock);
+        // println!("PPU: {}", self.ppu_clock);
+        self.ppu_clock
    }
 }
