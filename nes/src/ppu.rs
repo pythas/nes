@@ -9,6 +9,13 @@ impl Ppu {
         }
     }
 
+    pub fn read(&self, address: u16) -> u8 {
+        0x00
+    }
+
+    pub fn write(&mut self, address: u16, value: u8) {
+    }
+
     pub fn step(&mut self) -> u32 {
         self.tick(1);
 

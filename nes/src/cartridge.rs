@@ -87,37 +87,35 @@ impl Cartridge {
         }
     }
 
-    pub fn cpu_read(&self, address: u16) -> Option<u8> {
-        match self.mapper.as_ref().unwrap().cpu_read_address(address) {
-            None => None,
-            Some(address) => Some(self.prg_rom[address as usize]),
+    pub fn prg_read(&self, address: u16) -> u8 {
+        match self.mapper.as_ref().unwrap().prg_read_address(address) {
+            None => panic!("Invalid address."),
+            Some(address) => self.prg_rom[address as usize],
         }
     }
 
-    pub fn cpu_write(&mut self, address: u16, byte: u8) -> bool {
-        match self.mapper.as_ref().unwrap().cpu_write_address(address) {
-            None => false,
+    pub fn prg_write(&mut self, address: u16, byte: u8) {
+        match self.mapper.as_ref().unwrap().prg_write_address(address) {
+            None => panic!("Invalid address."),
             Some(address) => {
                 self.prg_rom[address as usize] = byte;
-                true
             },
+        };
+    }
+
+    pub fn chr_read(&self, address: u16) -> u8 {
+        match self.mapper.as_ref().unwrap().chr_read_address(address) {
+            None => panic!("Invalid address."),
+            Some(address) => self.prg_rom[address as usize],
         }
     }
 
-    pub fn ppu_read(&self, address: u16) -> Option<u8> {
-        match self.mapper.as_ref().unwrap().ppu_read_address(address) {
-            None => None,
-            Some(address) => Some(self.prg_rom[address as usize]),
-        }
-    }
-
-    pub fn ppu_write(&mut self, address: u16, byte: u8) -> bool {
-        match self.mapper.as_ref().unwrap().ppu_write_address(address) {
-            None => false,
+    pub fn chr_write(&mut self, address: u16, byte: u8) {
+        match self.mapper.as_ref().unwrap().chr_write_address(address) {
+            None => panic!("Invalid address."),
             Some(address) => {
                 self.prg_rom[address as usize] = byte;
-                true
             },
-        }
+        };
     }
 }

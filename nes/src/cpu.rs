@@ -42,7 +42,7 @@ pub struct DebugState {
 }
 
 pub struct Cpu {
-    bus: Bus,
+    pub bus: Bus,
     pc: u16,
     sp: u8,
     a: u8,
