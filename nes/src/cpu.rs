@@ -1224,7 +1224,9 @@ impl Cpu {
 
         operand = (operand >> 1) | ((self.get_flag(Flag::CarryFlag) as u16) << 7);
 
-        self.set_flag(Flag::CarryFlag, if self.bus.read(address) & 0x01 != 0 { 1 } else { 0 });
+        let carry = if self.bus.read(address) & 0x01 != 0 { 1 } else { 0 };
+
+        self.set_flag(Flag::CarryFlag, carry);
 
         self.bus.write(address, operand as u8);
 

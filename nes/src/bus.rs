@@ -26,7 +26,7 @@ impl Bus {
         self.ram[0xc000..0xfff0].clone_from_slice(data);
     }
 
-    pub fn read(&self, address: u16) -> u8 {
+    pub fn read(&mut self, address: u16) -> u8 {
         match address {
             0x0000..=0x1fff => self.ram[(address & 0x07ff) as usize],
             0x2000..=0x3fff => self.ppu.read(address & 0x0007),

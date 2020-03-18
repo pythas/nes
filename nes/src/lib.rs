@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate bitfield;
+
 pub mod bus;
 pub mod cartridge;
 pub mod cpu;
