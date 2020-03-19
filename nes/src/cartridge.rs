@@ -89,7 +89,7 @@ impl Cartridge {
 
     pub fn prg_read(&self, address: u16) -> u8 {
         match self.mapper.as_ref().unwrap().prg_read_address(address) {
-            None => panic!("Invalid address."),
+            None => 0x00, // panic!("Invalid address."),
             Some(address) => self.prg_rom[address as usize],
         }
     }

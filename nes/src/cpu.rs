@@ -1,4 +1,5 @@
 use std::fs;
+use std::collections::HashMap;
 
 use crate::bus::Bus;
 use crate::disassembler::Disassembler;
@@ -40,6 +41,28 @@ pub struct DebugState {
     pub clock: u32,
     pub instruction: Vec<u8>,
 }
+
+#[derive(Hash, Eq, PartialEq, Debug)]
+pub struct Instruction {
+    pub label: String,
+    pub mode: String,
+}
+
+impl Instruction {
+    pub fn new(label: &str, mode: &str) -> Instruction {
+        Instruction {
+            label: label.to_string(),
+            mode: mode.to_string(),
+        }
+    }
+}
+
+// pub struct InstructionLine {
+//     pub line: u16,
+//     pub instruction: String,
+// }
+
+pub struct InstructionLine(pub u16, pub String);
 
 pub struct Cpu {
     pub bus: Bus,
@@ -95,8 +118,8 @@ impl Cpu {
     }
 
     pub fn reset(&mut self) {
-        let lo = self.bus.read(0xfffc) as u16;
-        let hi = self.bus.read(0xfffd) as u16;
+        let lo = self.bus.read(0xfffc, false) as u16;
+        let hi = self.bus.read(0xfffd, false) as u16;
         self.pc = (hi << 8) | lo;
         self.a = 0;
         self.x = 0;
@@ -474,7 +497,7 @@ impl Cpu {
     }
 
     fn read_opcode(&mut self) -> u8 {
-        let opcode = self.bus.read(self.pc);
+        let opcode = self.bus.read(self.pc, false);
         self.pc += 1;
         opcode
     }
@@ -484,30 +507,38 @@ impl Cpu {
 
         let address = match mode {
             Mode::Absolute => {
-                let lo = self.bus.read(self.pc) as u16;
-                let hi = self.bus.read(self.pc + 1) as u16;
+                let lo = self.bus.read(self.pc, false) as u16;
+                let hi = self.bus.read(self.pc + 1, false) as u16;
                 let address = (hi << 8) | lo;
+
                 self.pc += 2;
+
                 address
             },
             Mode::AbsoluteX => {
-                let lo = self.bus.read(self.pc) as u16;
-                let hi = self.bus.read(self.pc + 1) as u16;
+                let lo = self.bus.read(self.pc, false) as u16;
+                let hi = self.bus.read(self.pc + 1, false) as u16;
                 let address = ((hi << 8) | lo).wrapping_add(self.x as u16);
+
                 if tick && address & 0xff00 != hi << 8 {
                     self.tick(1);
                 }
+
                 self.pc += 2;
+
                 address
             },
             Mode::AbsoluteY => {
-                let lo = self.bus.read(self.pc) as u16;
-                let hi = self.bus.read(self.pc + 1) as u16;
+                let lo = self.bus.read(self.pc, false) as u16;
+                let hi = self.bus.read(self.pc + 1, false) as u16;
                 let address = ((hi << 8) | lo).wrapping_add(self.y as u16);
+
                 if tick && address & 0xff00 != hi << 8 {
                     self.tick(1);
                 }
+
                 self.pc += 2;
+
                 address
             },
             Mode::Accumulator => {
@@ -515,62 +546,77 @@ impl Cpu {
             },
             Mode::Immediate => {
                 let address = self.pc;
+
                 self.pc += 1;
+
                 address
             },
             Mode::Implied => {
                 0x0000
             },
             Mode::IndexedIndirect => {
-                let operand = self.bus.read(self.pc);
-                let address = ((self.bus.read(operand.wrapping_add(self.x + 1) as u16) as u16) << 8) | self.bus.read(operand.wrapping_add(self.x) as u16) as u16;
+                let operand = self.bus.read(self.pc, false);
+                let address = ((self.bus.read(operand.wrapping_add(self.x + 1) as u16, false) as u16) << 8) | self.bus.read(operand.wrapping_add(self.x) as u16, false) as u16;
+
                 self.pc += 1;
+
                 address
             },
             Mode::Indirect => {
-                let lo = self.bus.read(self.pc) as u16;
-                let hi = self.bus.read(self.pc + 1) as u16;
-
+                let lo = self.bus.read(self.pc, false) as u16;
+                let hi = self.bus.read(self.pc + 1, false) as u16;
                 let mut address = (hi << 8) | lo;
 
                 address = if lo == 0xff {
-                    ((self.bus.read(address & 0xff00) as u16) << 8) | self.bus.read(address) as u16
+                    ((self.bus.read(address & 0xff00, false) as u16) << 8) | self.bus.read(address, false) as u16
                 } else {
-                    ((self.bus.read(address + 1) as u16) << 8) | self.bus.read(address) as u16
+                    ((self.bus.read(address + 1, false) as u16) << 8) | self.bus.read(address, false) as u16
                 };
 
                 self.pc += 2;
+
                 address
             },
             Mode::IndirectIndexed => {
-                let operand = self.bus.read(self.pc) as u16;
-                let lo = self.bus.read(operand) as u16;
-                let hi = self.bus.read((operand + 1) % 256) as u16;
+                let operand = self.bus.read(self.pc, false) as u16;
+                let lo = self.bus.read(operand, false) as u16;
+                let hi = self.bus.read((operand + 1) % 256, false) as u16;
                 let address = ((hi << 8) | lo).wrapping_add(self.y as u16);
+
                 if tick && address & 0xff00 != hi << 8 {
                     self.tick(1);
                 }
+
                 self.pc += 1;
+
                 address
             },
             Mode::Relative => {
                 let address = self.pc;
+
                 self.pc += 1;
+
                 address
             },
             Mode::ZeroPage => {
-                let address = self.bus.read(self.pc) as u16;
+                let address = self.bus.read(self.pc, false) as u16;
+
                 self.pc += 1;
+
                 address
             },
             Mode::ZeroPageX => {
-                let address = self.bus.read(self.pc).wrapping_add(self.x) as u16;
+                let address = self.bus.read(self.pc, false).wrapping_add(self.x) as u16;
+
                 self.pc += 1;
+
                 address
             }
             Mode::ZeroPageY => {
-                let address = self.bus.read(self.pc).wrapping_add(self.y) as u16;
+                let address = self.bus.read(self.pc, false).wrapping_add(self.y) as u16;
+
                 self.pc += 1;
+
                 address
             }
         };
@@ -581,7 +627,7 @@ impl Cpu {
             let mut bytes = Vec::new();
 
             for debug_address in start_pc - 1..stop_pc {
-                bytes.push(self.bus.read(debug_address));
+                bytes.push(self.bus.read(debug_address, true));
             }
 
             disassembler.load(bytes.as_slice());
@@ -593,7 +639,7 @@ impl Cpu {
     fn read_operand(&mut self, mode: Mode) -> u8 {
         let address = self.read_address(mode, true);
 
-        self.bus.read(address)
+        self.bus.read(address, false)
     }
 
     fn compare(&mut self, a: u8, b: u8) {
@@ -634,7 +680,7 @@ impl Cpu {
     fn pull(&mut self) -> u8 {
         self.sp = self.sp.wrapping_add(1);
         let address = 0x100 + self.sp as u16;
-        self.bus.read(address)
+        self.bus.read(address, false)
     }
 
     // Single byte
@@ -741,7 +787,7 @@ impl Cpu {
 
     fn inc(&mut self, mode: Mode) {
         let address = self.read_address(mode, true);
-        let operand = self.bus.read(address).wrapping_add(1);
+        let operand = self.bus.read(address, false).wrapping_add(1);
 
         self.set_flag_if_negative(operand);
         self.set_flag_if_zero(operand);
@@ -751,7 +797,7 @@ impl Cpu {
 
     fn dec(&mut self, mode: Mode) {
         let address = self.read_address(mode, true);
-        let operand = self.bus.read(address).wrapping_sub(1);
+        let operand = self.bus.read(address, false).wrapping_sub(1);
 
         self.set_flag_if_negative(operand);
         self.set_flag_if_zero(operand);
@@ -793,7 +839,7 @@ impl Cpu {
 
         self.set_flag(Flag::BreakCommand, 1);
 
-        let address = self.bus.read(0xfffe) as u16 | (self.bus.read(0xffff) as u16) << 8;
+        let address = self.bus.read(0xfffe, false) as u16 | (self.bus.read(0xffff, false) as u16) << 8;
 
         self.push((self.pc >> 8) as u8);
         self.push(self.pc as u8);
@@ -882,7 +928,7 @@ impl Cpu {
             self.a = operand as u8;
         } else {
             let address = self.read_address(mode, true);
-            let mut operand = self.bus.read(address) as u16;
+            let mut operand = self.bus.read(address, false) as u16;
 
             operand <<= 1;
 
@@ -909,7 +955,7 @@ impl Cpu {
             self.a = operand as u8;
         } else {
             let address = self.read_address(mode, true);
-            let mut operand = self.bus.read(address) as u16;
+            let mut operand = self.bus.read(address, false) as u16;
 
             self.set_flag(Flag::CarryFlag, if operand & 1 > 0 { 1 } else { 0 });
 
@@ -936,7 +982,7 @@ impl Cpu {
             self.a = result as u8;
         } else {
             let address = self.read_address(mode, true);
-            let operand = self.bus.read(address) as u16;
+            let operand = self.bus.read(address, false) as u16;
 
             let result = (operand << 1) | self.get_flag(Flag::CarryFlag) as u16;
 
@@ -962,7 +1008,7 @@ impl Cpu {
             self.a = result as u8;
         } else {
             let address = self.read_address(mode, true);
-            let operand = self.bus.read(address);
+            let operand = self.bus.read(address, false);
 
             let result = ((operand as u16) >> 1) | ((self.get_flag(Flag::CarryFlag) as u16) << 7);
 
@@ -1144,7 +1190,7 @@ impl Cpu {
 
     fn dcp(&mut self, mode: Mode) {
         let address = self.read_address(mode, false);
-        let operand = self.bus.read(address).wrapping_sub(1);
+        let operand = self.bus.read(address, false).wrapping_sub(1);
         self.bus.write(address, operand);
 
         self.compare(self.a, operand);
@@ -1152,7 +1198,7 @@ impl Cpu {
 
     fn isc(&mut self, mode: Mode) {
         let address = self.read_address(mode, false);
-        let mut operand = self.bus.read(address).wrapping_add(1) as u16;
+        let mut operand = self.bus.read(address, false).wrapping_add(1) as u16;
         self.bus.write(address, operand as u8);
 
         operand ^= 0x00ff;
@@ -1173,7 +1219,7 @@ impl Cpu {
 
     fn slo(&mut self, mode: Mode) {
         let address = self.read_address(mode, false);
-        let mut operand = self.bus.read(address) as u16;
+        let mut operand = self.bus.read(address, false) as u16;
 
         operand <<= 1;
         self.bus.write(address, operand as u8);
@@ -1188,7 +1234,7 @@ impl Cpu {
 
     fn rla(&mut self, mode: Mode) {
         let address = self.read_address(mode, false);
-        let mut operand = self.bus.read(address) as u16;
+        let mut operand = self.bus.read(address, false) as u16;
 
         operand = (operand << 1) | self.get_flag(Flag::CarryFlag) as u16;
         self.bus.write(address, operand as u8);
@@ -1204,7 +1250,7 @@ impl Cpu {
 
     fn sre(&mut self, mode: Mode) {
         let address = self.read_address(mode, false);
-        let mut operand = self.bus.read(address) as u16;
+        let mut operand = self.bus.read(address, false) as u16;
 
         self.set_flag(Flag::CarryFlag, if operand & 1 > 0 { 1 } else { 0 });
 
@@ -1220,11 +1266,11 @@ impl Cpu {
 
     fn rra(&mut self, mode: Mode) {
         let address = self.read_address(mode, false);
-        let mut operand = self.bus.read(address) as u16;
+        let mut operand = self.bus.read(address, false) as u16;
 
         operand = (operand >> 1) | ((self.get_flag(Flag::CarryFlag) as u16) << 7);
 
-        let carry = if self.bus.read(address) & 0x01 != 0 { 1 } else { 0 };
+        let carry = if self.bus.read(address, false) & 0x01 != 0 { 1 } else { 0 };
 
         self.set_flag(Flag::CarryFlag, carry);
 
@@ -1242,6 +1288,347 @@ impl Cpu {
         self.set_flag(Flag::NegativeFlag, negative);
 
         self.a = (result & 0xff) as u8;
+    }
+
+    pub fn disassemble(&mut self, start: u16, stop: u16) -> Vec<InstructionLine> {
+        let mut lines: Vec<InstructionLine> = Vec::new();
+        let mut instructions: HashMap<u8, Instruction> = HashMap::new();
+
+        instructions.insert(0x00, Instruction::new("BRK", "IMP"));
+        instructions.insert(0x01, Instruction::new("ORA", "IDX"));
+        instructions.insert(0x03, Instruction::new("SLO", "IDX"));
+        instructions.insert(0x04, Instruction::new("NOP", "ZPG"));
+        instructions.insert(0x05, Instruction::new("ORA", "ZPG"));
+        instructions.insert(0x06, Instruction::new("ASL", "ZPG"));
+        instructions.insert(0x07, Instruction::new("SLO", "ZPG"));
+        instructions.insert(0x08, Instruction::new("PHP", "IMP"));
+        instructions.insert(0x09, Instruction::new("ORA", "IMM"));
+        instructions.insert(0x0a, Instruction::new("ASL", "IMP"));
+        instructions.insert(0x0c, Instruction::new("NOP", "ABS"));
+        instructions.insert(0x0d, Instruction::new("ORA", "ABS"));
+        instructions.insert(0x0e, Instruction::new("ASL", "ABS"));
+        instructions.insert(0x0f, Instruction::new("SLO", "ABS"));
+        instructions.insert(0x10, Instruction::new("BPL", "REL"));
+        instructions.insert(0x11, Instruction::new("ORA", "IDY"));
+        instructions.insert(0x13, Instruction::new("SLO", "IDY"));
+        instructions.insert(0x14, Instruction::new("NOP", "ZPX"));
+        instructions.insert(0x15, Instruction::new("ORA", "ZPX"));
+        instructions.insert(0x16, Instruction::new("ASL", "ZPX"));
+        instructions.insert(0x17, Instruction::new("SLO", "ZPX"));
+        instructions.insert(0x18, Instruction::new("CLC", "IMP"));
+        instructions.insert(0x19, Instruction::new("ORA", "ABY"));
+        instructions.insert(0x1a, Instruction::new("NOP", "IMP"));
+        instructions.insert(0x1b, Instruction::new("SLO", "ABY"));
+        instructions.insert(0x1c, Instruction::new("NOP", "ABX"));
+        instructions.insert(0x1d, Instruction::new("ORA", "ABX"));
+        instructions.insert(0x1e, Instruction::new("ASL", "ABX"));
+        instructions.insert(0x1f, Instruction::new("SLO", "ABX"));
+        instructions.insert(0x20, Instruction::new("JSR", "ABS"));
+        instructions.insert(0x21, Instruction::new("AND", "IDX"));
+        instructions.insert(0x23, Instruction::new("RLA", "IDX"));
+        instructions.insert(0x24, Instruction::new("BIT", "ZPG"));
+        instructions.insert(0x25, Instruction::new("AND", "ZPG"));
+        instructions.insert(0x26, Instruction::new("ROL", "ZPG"));
+        instructions.insert(0x27, Instruction::new("RLA", "ZPG"));
+        instructions.insert(0x28, Instruction::new("PLP", "IMP"));
+        instructions.insert(0x29, Instruction::new("AND", "IMM"));
+        instructions.insert(0x2a, Instruction::new("ROL", "IMP"));
+        instructions.insert(0x2c, Instruction::new("BIT", "ABS"));
+        instructions.insert(0x2d, Instruction::new("AND", "ABS"));
+        instructions.insert(0x2e, Instruction::new("ROL", "ABS"));
+        instructions.insert(0x2f, Instruction::new("RLA", "ABS"));
+        instructions.insert(0x30, Instruction::new("BMI", "REL"));
+        instructions.insert(0x31, Instruction::new("AND", "IDY"));
+        instructions.insert(0x33, Instruction::new("RLA", "IDY"));
+        instructions.insert(0x34, Instruction::new("NOP", "ZPX"));
+        instructions.insert(0x35, Instruction::new("AND", "ZPX"));
+        instructions.insert(0x36, Instruction::new("ROL", "ZPX"));
+        instructions.insert(0x37, Instruction::new("RLA", "ZPX"));
+        instructions.insert(0x38, Instruction::new("SEC", "IMP"));
+        instructions.insert(0x39, Instruction::new("AND", "ABY"));
+        instructions.insert(0x3a, Instruction::new("NOP", "IMP"));
+        instructions.insert(0x3b, Instruction::new("RLA", "ABY"));
+        instructions.insert(0x3c, Instruction::new("NOP", "ABX"));
+        instructions.insert(0x3d, Instruction::new("AND", "ABX"));
+        instructions.insert(0x3e, Instruction::new("ROL", "ABX"));
+        instructions.insert(0x3f, Instruction::new("RLA", "ABX"));
+        instructions.insert(0x40, Instruction::new("RTI", "IMP"));
+        instructions.insert(0x41, Instruction::new("EOR", "IDX"));
+        instructions.insert(0x43, Instruction::new("SRE", "IDX"));
+        instructions.insert(0x44, Instruction::new("NOP", "ZPG"));
+        instructions.insert(0x45, Instruction::new("EOR", "ZPG"));
+        instructions.insert(0x46, Instruction::new("LSR", "ZPG"));
+        instructions.insert(0x47, Instruction::new("SRE", "ZPG"));
+        instructions.insert(0x48, Instruction::new("PHA", "IMP"));
+        instructions.insert(0x49, Instruction::new("EOR", "IMM"));
+        instructions.insert(0x4a, Instruction::new("LSR", "IMP"));
+        instructions.insert(0x4c, Instruction::new("JMP", "ABS"));
+        instructions.insert(0x4d, Instruction::new("EOR", "ABS"));
+        instructions.insert(0x4e, Instruction::new("LSR", "ABS"));
+        instructions.insert(0x4f, Instruction::new("SRE", "ABS"));
+        instructions.insert(0x50, Instruction::new("BVC", "REL"));
+        instructions.insert(0x51, Instruction::new("EOR", "IDY"));
+        instructions.insert(0x53, Instruction::new("SRE", "IDY"));
+        instructions.insert(0x54, Instruction::new("NOP", "ZPX"));
+        instructions.insert(0x55, Instruction::new("EOR", "ZPX"));
+        instructions.insert(0x56, Instruction::new("LSR", "ZPX"));
+        instructions.insert(0x57, Instruction::new("SRE", "ZPX"));
+        instructions.insert(0x58, Instruction::new("CLI", "IMP"));
+        instructions.insert(0x59, Instruction::new("EOR", "ABY"));
+        instructions.insert(0x5a, Instruction::new("NOP", "IMP"));
+        instructions.insert(0x5b, Instruction::new("SRE", "ABY"));
+        instructions.insert(0x5c, Instruction::new("NOP", "ABX"));
+        instructions.insert(0x5d, Instruction::new("EOR", "ABX"));
+        instructions.insert(0x5e, Instruction::new("LSR", "ABX"));
+        instructions.insert(0x5f, Instruction::new("SRE", "ABX"));
+        instructions.insert(0x60, Instruction::new("RTS", "IMP"));
+        instructions.insert(0x61, Instruction::new("ADC", "IDX"));
+        instructions.insert(0x63, Instruction::new("RRA", "IDX"));
+        instructions.insert(0x64, Instruction::new("NOP", "ZPG"));
+        instructions.insert(0x65, Instruction::new("ADC", "ZPG"));
+        instructions.insert(0x66, Instruction::new("ROR", "ZPG"));
+        instructions.insert(0x67, Instruction::new("RRA", "ZPG"));
+        instructions.insert(0x68, Instruction::new("PLA", "IMP"));
+        instructions.insert(0x69, Instruction::new("ADC", "IMM"));
+        instructions.insert(0x6a, Instruction::new("ROR", "IMP"));
+        instructions.insert(0x6c, Instruction::new("JMP", "IND"));
+        instructions.insert(0x6d, Instruction::new("ADC", "ABS"));
+        instructions.insert(0x6e, Instruction::new("ROR", "ABS"));
+        instructions.insert(0x6f, Instruction::new("RRA", "ABS"));
+        instructions.insert(0x70, Instruction::new("BVS", "REL"));
+        instructions.insert(0x71, Instruction::new("ADC", "IDY"));
+        instructions.insert(0x73, Instruction::new("RRA", "IDY"));
+        instructions.insert(0x74, Instruction::new("NOP", "ZPX"));
+        instructions.insert(0x75, Instruction::new("ADC", "ZPX"));
+        instructions.insert(0x76, Instruction::new("ROR", "ZPX"));
+        instructions.insert(0x77, Instruction::new("RRA", "ZPX"));
+        instructions.insert(0x78, Instruction::new("SEI", "IMP"));
+        instructions.insert(0x79, Instruction::new("ADC", "ABY"));
+        instructions.insert(0x7a, Instruction::new("NOP", "IMP"));
+        instructions.insert(0x7b, Instruction::new("RRA", "ABY"));
+        instructions.insert(0x7c, Instruction::new("NOP", "ABX"));
+        instructions.insert(0x7d, Instruction::new("ADC", "ABX"));
+        instructions.insert(0x7e, Instruction::new("ROR", "ABX"));
+        instructions.insert(0x7f, Instruction::new("RRA", "ABX"));
+        instructions.insert(0x80, Instruction::new("NOP", "IMM"));
+        instructions.insert(0x81, Instruction::new("STA", "IDX"));
+        instructions.insert(0x83, Instruction::new("SAX", "IDX"));
+        instructions.insert(0x84, Instruction::new("STY", "ZPG"));
+        instructions.insert(0x85, Instruction::new("STA", "ZPG"));
+        instructions.insert(0x86, Instruction::new("STX", "ZPG"));
+        instructions.insert(0x87, Instruction::new("SAX", "ZPG"));
+        instructions.insert(0x88, Instruction::new("DEY", "IMP"));
+        instructions.insert(0x8a, Instruction::new("TXA", "IMP"));
+        instructions.insert(0x8c, Instruction::new("STY", "ABS"));
+        instructions.insert(0x8d, Instruction::new("STA", "ABS"));
+        instructions.insert(0x8e, Instruction::new("STX", "ABS"));
+        instructions.insert(0x8f, Instruction::new("SAX", "ABS"));
+        instructions.insert(0x90, Instruction::new("BCC", "REL"));
+        instructions.insert(0x91, Instruction::new("STA", "IDY"));
+        instructions.insert(0x94, Instruction::new("STY", "ZPX"));
+        instructions.insert(0x95, Instruction::new("STA", "ZPX"));
+        instructions.insert(0x96, Instruction::new("STX", "ZPY"));
+        instructions.insert(0x97, Instruction::new("SAX", "ZPY"));
+        instructions.insert(0x98, Instruction::new("TYA", "IMP"));
+        instructions.insert(0x99, Instruction::new("STA", "ABY"));
+        instructions.insert(0x9a, Instruction::new("TXS", "IMP"));
+        instructions.insert(0x9d, Instruction::new("STA", "ABX"));
+        instructions.insert(0xa0, Instruction::new("LDY", "IMM"));
+        instructions.insert(0xa1, Instruction::new("LDA", "IDX"));
+        instructions.insert(0xa2, Instruction::new("LDX", "IMM"));
+        instructions.insert(0xa3, Instruction::new("LAX", "IDX"));
+        instructions.insert(0xa4, Instruction::new("LDY", "ZPG"));
+        instructions.insert(0xa5, Instruction::new("LDA", "ZPG"));
+        instructions.insert(0xa6, Instruction::new("LDX", "ZPG"));
+        instructions.insert(0xa7, Instruction::new("LAX", "ZPG"));
+        instructions.insert(0xa8, Instruction::new("TAY", "IMP"));
+        instructions.insert(0xa9, Instruction::new("LDA", "IMM"));
+        instructions.insert(0xaa, Instruction::new("TAX", "IMP"));
+        instructions.insert(0xac, Instruction::new("LDY", "ABS"));
+        instructions.insert(0xad, Instruction::new("LDA", "ABS"));
+        instructions.insert(0xae, Instruction::new("LDX", "ABS"));
+        instructions.insert(0xaf, Instruction::new("LAX", "ABS"));
+        instructions.insert(0xb0, Instruction::new("BCS", "REL"));
+        instructions.insert(0xb1, Instruction::new("LDA", "IDY"));
+        instructions.insert(0xb3, Instruction::new("LAX", "IDY"));
+        instructions.insert(0xb4, Instruction::new("LDY", "ZPX"));
+        instructions.insert(0xb5, Instruction::new("LDA", "ZPX"));
+        instructions.insert(0xb6, Instruction::new("LDX", "ZPY"));
+        instructions.insert(0xb7, Instruction::new("LAX", "ZPY"));
+        instructions.insert(0xb8, Instruction::new("CLV", "IMP"));
+        instructions.insert(0xb9, Instruction::new("LDA", "ABY"));
+        instructions.insert(0xba, Instruction::new("TSX", "IMP"));
+        instructions.insert(0xbc, Instruction::new("LDY", "ABX"));
+        instructions.insert(0xbd, Instruction::new("LDA", "ABX"));
+        instructions.insert(0xbe, Instruction::new("LDX", "ABY"));
+        instructions.insert(0xbf, Instruction::new("LAX", "ABY"));
+        instructions.insert(0xc0, Instruction::new("CPY", "IMM"));
+        instructions.insert(0xc1, Instruction::new("CMP", "IDX"));
+        instructions.insert(0xc3, Instruction::new("DCP", "IDX"));
+        instructions.insert(0xc4, Instruction::new("CPY", "ZPG"));
+        instructions.insert(0xc5, Instruction::new("CMP", "ZPG"));
+        instructions.insert(0xc6, Instruction::new("DEC", "ZPG"));
+        instructions.insert(0xc7, Instruction::new("DCP", "ZPG"));
+        instructions.insert(0xc8, Instruction::new("INY", "IMP"));
+        instructions.insert(0xc9, Instruction::new("CMP", "IMM"));
+        instructions.insert(0xca, Instruction::new("DEX", "IMP"));
+        instructions.insert(0xcc, Instruction::new("CPY", "ABS"));
+        instructions.insert(0xcd, Instruction::new("CMP", "ABS"));
+        instructions.insert(0xce, Instruction::new("DEC", "ABS"));
+        instructions.insert(0xcf, Instruction::new("DCP", "ABS"));
+        instructions.insert(0xd0, Instruction::new("BNE", "REL"));
+        instructions.insert(0xd1, Instruction::new("CMP", "IDY"));
+        instructions.insert(0xd3, Instruction::new("DCP", "IDY"));
+        instructions.insert(0xd4, Instruction::new("NOP", "ZPX"));
+        instructions.insert(0xd5, Instruction::new("CMP", "ZPX"));
+        instructions.insert(0xd6, Instruction::new("DEC", "ZPX"));
+        instructions.insert(0xd7, Instruction::new("DCP", "ZPX"));
+        instructions.insert(0xd8, Instruction::new("CLD", "IMP"));
+        instructions.insert(0xd9, Instruction::new("CMP", "ABY"));
+        instructions.insert(0xda, Instruction::new("NOP", "IMP"));
+        instructions.insert(0xdb, Instruction::new("DCP", "ABY"));
+        instructions.insert(0xdc, Instruction::new("NOP", "ABX"));
+        instructions.insert(0xdd, Instruction::new("CMP", "ABX"));
+        instructions.insert(0xde, Instruction::new("DEC", "ABX"));
+        instructions.insert(0xdf, Instruction::new("DCP", "ABX"));
+        instructions.insert(0xe0, Instruction::new("CPX", "IMM"));
+        instructions.insert(0xe1, Instruction::new("SBC", "IDX"));
+        instructions.insert(0xe3, Instruction::new("ISC", "IDX"));
+        instructions.insert(0xe4, Instruction::new("CPX", "ZPG"));
+        instructions.insert(0xe5, Instruction::new("SBC", "ZPG"));
+        instructions.insert(0xe6, Instruction::new("INC", "ZPG"));
+        instructions.insert(0xe7, Instruction::new("ISC", "ZPG"));
+        instructions.insert(0xe8, Instruction::new("INX", "IMP"));
+        instructions.insert(0xe9, Instruction::new("SBC", "IMM"));
+        instructions.insert(0xea, Instruction::new("NOP", "IMP"));
+        instructions.insert(0xeb, Instruction::new("SBC", "IMM"));
+        instructions.insert(0xec, Instruction::new("CPX", "ABS"));
+        instructions.insert(0xed, Instruction::new("SBC", "ABS"));
+        instructions.insert(0xee, Instruction::new("INC", "ABS"));
+        instructions.insert(0xef, Instruction::new("ISC", "ABS"));
+        instructions.insert(0xf0, Instruction::new("BEQ", "REL"));
+        instructions.insert(0xf1, Instruction::new("SBC", "IDY"));
+        instructions.insert(0xf3, Instruction::new("ISC", "IDY"));
+        instructions.insert(0xf4, Instruction::new("NOP", "ZPX"));
+        instructions.insert(0xf5, Instruction::new("SBC", "ZPX"));
+        instructions.insert(0xf6, Instruction::new("INC", "ZPX"));
+        instructions.insert(0xf7, Instruction::new("ISC", "ZPX"));
+        instructions.insert(0xf8, Instruction::new("SED", "IMP"));
+        instructions.insert(0xf9, Instruction::new("SBC", "ABY"));
+        instructions.insert(0xfa, Instruction::new("NOP", "IMP"));
+        instructions.insert(0xfb, Instruction::new("ISC", "ABY"));
+        instructions.insert(0xfc, Instruction::new("NOP", "ABX"));
+        instructions.insert(0xfd, Instruction::new("SBC", "ABX"));
+        instructions.insert(0xfe, Instruction::new("INC", "ABX"));
+        instructions.insert(0xff, Instruction::new("ISC", "ABX"));
+
+        let mut address = start as u32;
+
+        while address <= stop as u32 {
+            let opcode_address = address as u16;
+            let opcode = self.bus.read(address as u16, true);
+            address += 1;
+
+            let mut line = String::new();
+
+            match instructions.get(&opcode) {
+                Some(instruction) => {
+                    line.push_str(&format!("{:04X}: ${}", opcode_address, instruction.label));
+
+                    match &instruction.mode[..] {
+                        "ABS" => {
+                            let lo = self.bus.read(address as u16, false) as u16;
+                            address += 1;
+                            let hi = self.bus.read(address as u16, false) as u16;
+                            address += 1;
+
+                            line.push_str(&format!(" ${:04X} - ABS", (hi << 8) | lo));
+
+                        },
+                        "ABX" => {
+                            let lo = self.bus.read(address as u16, false) as u16;
+                            address += 1;
+                            let hi = self.bus.read(address as u16, false) as u16;
+                            address += 1;
+
+                            line.push_str(&format!(" ${:04X}, X - ABX", (hi << 8) | lo));
+                        },
+                        "ABY" => {
+                            let lo = self.bus.read(address as u16, false) as u16;
+                            address += 1;
+                            let hi = self.bus.read(address as u16, false) as u16;
+                            address += 1;
+
+                            line.push_str(&format!(" ${:04X}, Y - ABY", (hi << 8) | lo));
+                        },
+                        "IMM" => {
+                            let lo = self.bus.read(address as u16, false) as u16;
+                            address += 1;
+
+                            line.push_str(&format!(" #${:02X} - IMM", lo));
+                        },
+                        "IMP" => {
+                            line.push_str(" - IMP");
+                        },
+                        "IDX" => {
+                            let lo = self.bus.read(address as u16, false) as u16;
+                            address += 1;
+                            let hi = 0x00;
+
+                            line.push_str(&format!(" (${:04X}, X) - IDX", (hi << 8) | lo));
+                        },
+                        "IND" => {
+                            let lo = self.bus.read(address as u16, false) as u16;
+                            address += 1;
+                            let hi = self.bus.read(address as u16, false) as u16;
+                            address += 1;
+
+                            line.push_str(&format!(" (${:04X}) - IND", (hi << 8) | lo));
+                        },
+                        "IDY" => {
+                            let lo = self.bus.read(address as u16, false) as u16;
+                            address += 1;
+                            let hi = 0x00;
+
+                            line.push_str(&format!(" (${:04X}), Y - IDY", (hi << 8) | lo));
+                        },
+                        "REL" => {
+                            let lo = self.bus.read(address as u16, false) as u16;
+                            address += 1;
+
+                            line.push_str(&format!(" ${:02X} [${:04X}] - REL", lo, address.wrapping_add(lo as u32)));
+                        },
+                        "ZPG" => {
+                            let lo = self.bus.read(address as u16, false) as u16;
+                            address += 1;
+
+                            line.push_str(&format!(" ${:02X} - ZPG", lo));
+                        },
+                        "ZPX" => {
+                            let lo = self.bus.read(address as u16, false) as u16;
+                            address += 1;
+
+                            line.push_str(&format!(" ${:02X}, X - ZPX", lo));
+                        },
+                        "ZPY" => {
+                            let lo = self.bus.read(address as u16, false) as u16;
+                            address += 1;
+
+                            line.push_str(&format!(" ${:02X}, Y - ZPY", lo));
+                        },
+                        _ => panic!("Invalid addressing mode"),
+                    }
+                },
+                None => {
+                    // line.push_str(&format!("{:04X}: $??? ({:02X}) ", opcode_address, opcode));
+                },
+            }
+
+
+            lines.push(InstructionLine(opcode_address, line));
+        }
+
+        lines
     }
 }
 

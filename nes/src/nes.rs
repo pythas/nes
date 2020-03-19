@@ -27,6 +27,6 @@ impl Nes {
 
         // println!("CPU: {}", self.cpu_clock);
 
-        thread::sleep(time::Duration::from_millis(200));
+        // thread::sleep(time::Duration::from_millis(100));
     }
 }
