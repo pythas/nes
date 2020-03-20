@@ -70,6 +70,7 @@ pub fn main() {
     nes.cpu.debug();
 
     let disassembly = nes.cpu.disassemble(nes.cpu.pc, 0xffff);
+    let mut halt = true;
 
     'running: loop {
         canvas.set_draw_color(Color::RGB(139, 50, 168));
@@ -81,11 +82,19 @@ pub fn main() {
                 Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
                     break 'running
                 },
+                Event::KeyDown { keycode: Some(Keycode::Right), .. } => {
+                    nes.step();
+                },
+                Event::KeyDown { keycode: Some(Keycode::Return), .. } => {
+                    halt = !halt;
+                },
                 _ => {}
             }
         }
 
-        nes.step();
+        if !halt {
+            nes.step();
+        }
 
         // Font
         canvas.set_logical_size(REAL_SCREEN_WIDTH, REAL_SCREEN_HEIGHT).unwrap();
@@ -136,32 +145,3 @@ pub fn main() {
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
 }
-
-
-// fn main() {
-//     let mut cpu = Cpu::new();
-//     // cpu.load("nes\\testroms\\nestest.nes");
-//     // cpu.pc(0xc000);
-//     // cpu.sp(0xfd);
-//     // cpu.p(0x24);
-//     // cpu.clock(7);
-
-//     cpu.reset();
-//     cpu.debug();
-
-//     let mut nes = Nes::new(cpu);
-
-//     loop {
-//         nes.step();
-
-//         let pixels = nes.cpu.bus.ppu.debug_pixels();
-
-//         // println!("{:?}", pixels);
-
-//         // let state = nes.cpu.debug_state().unwrap();
-//         // let instruction = format!("{:10}", format!("{:02X?}", state.instruction).replace("[", "").replace("]", "").replace(",", ""));
-//         // let debug_str = format!("{:48} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} PPU: {:3}  X CYC:XXX", format!("{:04X}  {}{}", state.pc, instruction, "---"), state.a, state.x, state.y, state.p, state.sp, "X");
-
-//         // println!("{}", debug_str);
-//     }
-// }
