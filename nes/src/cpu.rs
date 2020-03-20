@@ -66,7 +66,7 @@ pub struct InstructionLine(pub u16, pub String);
 
 pub struct Cpu {
     pub bus: Bus,
-    pc: u16,
+    pub pc: u16,
     sp: u8,
     a: u8,
     x: u8,

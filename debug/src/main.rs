@@ -66,18 +66,10 @@ pub fn main() {
     let cpu = Cpu::new();
     let mut nes = Nes::new(cpu);
 
-    let disassembly_start = 0xc79e;
-    let disassembly_stop = 0xffff;
-    let disassembly = nes.cpu.disassemble(disassembly_start, disassembly_stop);
-    // let mut disassembly_iter = disassembly.iter();
-
-    // let start = disassembly.iter().position(|x| x.line == 0xc79e);
-    // println!("{}", start.unwrap());
-    // let start = disassembly.iter().position(|x| x.line == 0xc79f);
-    // println!("{}", start.unwrap());
-
     nes.cpu.reset();
     nes.cpu.debug();
+
+    let disassembly = nes.cpu.disassemble(nes.cpu.pc, 0xffff);
 
     'running: loop {
         canvas.set_draw_color(Color::RGB(139, 50, 168));
@@ -95,12 +87,10 @@ pub fn main() {
 
         nes.step();
 
-        let state = nes.cpu.debug_state().unwrap();
-
         // Font
         canvas.set_logical_size(REAL_SCREEN_WIDTH, REAL_SCREEN_HEIGHT).unwrap();
 
-        let mut start = disassembly.iter().position(|x| x.0 == state.pc).unwrap();
+        let mut start = disassembly.iter().position(|x| x.0 == nes.cpu.pc).unwrap();
         let current = start;
         let mut stop = start + 20;
 
