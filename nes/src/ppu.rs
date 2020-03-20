@@ -122,7 +122,7 @@ pub struct Pixel {
 }
 
 pub struct Ppu {
-    clock: u32,
+    pub clock: u32,
     control: Control,
     mask: Mask,
     status: Status,
@@ -130,7 +130,7 @@ pub struct Ppu {
     // vram: Address,
     // vram_temp: Address,
 
-    scanline: i16,
+    pub scanline: i16,
 
     latch: bool,
     data_buffer: u8,

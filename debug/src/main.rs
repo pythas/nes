@@ -71,6 +71,9 @@ pub fn main() {
 
     let disassembly = nes.cpu.disassemble(nes.cpu.pc, 0xffff);
     let mut halt = true;
+    let color_white = Color::RGBA(255, 255, 255, 255);
+    let color_gray = Color::RGBA(255, 255, 255, 150);
+    let color_highlight = Color::RGBA(0, 255, 150, 255);
 
     'running: loop {
         canvas.set_draw_color(Color::RGB(139, 50, 168));
@@ -96,9 +99,25 @@ pub fn main() {
             nes.step();
         }
 
-        // Font
         canvas.set_logical_size(REAL_SCREEN_WIDTH, REAL_SCREEN_HEIGHT).unwrap();
 
+        // Draw CPU state
+        let mut target = rect!(REAL_SCREEN_WIDTH as i32 - 256, 0, 0, 0);
+
+        target = draw_text(target.right(), 0, "N", if nes.cpu.p & (1 << 7) > 0 { color_white } else { color_gray }, &font, &texture_creator, &mut canvas);
+        target = draw_text(target.right(), 0, "V", if nes.cpu.p & (1 << 6) > 0 { color_white } else { color_gray }, &font, &texture_creator, &mut canvas);
+        target = draw_text(target.right(), 0, "U", if nes.cpu.p & (1 << 5) > 0 { color_white } else { color_gray }, &font, &texture_creator, &mut canvas);
+        target = draw_text(target.right(), 0, "B", if nes.cpu.p & (1 << 4) > 0 { color_white } else { color_gray }, &font, &texture_creator, &mut canvas);
+        target = draw_text(target.right(), 0, "D", if nes.cpu.p & (1 << 3) > 0 { color_white } else { color_gray }, &font, &texture_creator, &mut canvas);
+        target = draw_text(target.right(), 0, "I", if nes.cpu.p & (1 << 2) > 0 { color_white } else { color_gray }, &font, &texture_creator, &mut canvas);
+        target = draw_text(target.right(), 0, "Z", if nes.cpu.p & (1 << 1) > 0 { color_white } else { color_gray }, &font, &texture_creator, &mut canvas);
+        target = draw_text(target.right(), 0, "C", if nes.cpu.p & (1 << 0) > 0 { color_white } else { color_gray }, &font, &texture_creator, &mut canvas);
+
+        // Draw PPU state
+        target = draw_text(REAL_SCREEN_WIDTH as i32 - 256, target.bottom(), &format!("S: {} C: {}", nes.cpu.bus.ppu.scanline, nes.cpu.bus.ppu.clock)[..], color_white, &font, &texture_creator, &mut canvas);
+
+
+        // Draw code
         let mut start = disassembly.iter().position(|x| x.0 == nes.cpu.pc).unwrap();
         let current = start;
         let mut stop = start + 20;
@@ -113,17 +132,12 @@ pub fn main() {
             stop = disassembly.len() - 1;
         }
 
-        let mut target = rect!(0, 0, 0, 0);
+        let mut target = rect!(0, 0, 0, 13 * 4);
 
         for i in start..stop {
-            let color = if i == current {
-                Color::RGBA(0, 255, 0, 255)
-            } else {
-                Color::RGBA(255, 255, 255, 255)
-            };
-
-            target = draw_text(REAL_SCREEN_WIDTH as i32 - 256, target.bottom(), &disassembly[i].1[..], color, &font, &texture_creator, &mut canvas);
+            target = draw_text(REAL_SCREEN_WIDTH as i32 - 256, target.bottom(), &disassembly[i].1[..], if i == current { color_highlight } else { color_white }, &font, &texture_creator, &mut canvas);
         }
+
 
         // Pixel
         canvas.set_logical_size(SCREEN_WIDTH, SCREEN_HEIGHT).unwrap();

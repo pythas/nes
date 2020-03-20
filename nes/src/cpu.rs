@@ -57,11 +57,6 @@ impl Instruction {
     }
 }
 
-// pub struct InstructionLine {
-//     pub line: u16,
-//     pub instruction: String,
-// }
-
 pub struct InstructionLine(pub u16, pub String);
 
 pub struct Cpu {
@@ -71,7 +66,7 @@ pub struct Cpu {
     a: u8,
     x: u8,
     y: u8,
-    p: u8,
+    pub p: u8,
     clock: u32,
     debug: bool,
     disassembler: Option<Disassembler>,
