@@ -152,7 +152,7 @@ impl Ppu {
             control: Control(0x00),
             mask: Mask(0x00),
             status: Status(0x00),
-            scanline: -1,
+            scanline: 240,
             latch: false,
             data_buffer: 0,
             address_buffer: 0,
@@ -172,12 +172,14 @@ impl Ppu {
                 0x00
             },
             0x0002 => {
+                let status = self.status.get();
+
                 if !debug {
                     // TODO: add sprite overflow
                     self.status.set_vertical_blank(false);
                 }
 
-                self.status.get()
+                status
             },
             0x0003 => {
                 0x00
@@ -246,15 +248,13 @@ impl Ppu {
     }
 
     fn internal_read(&self, address: u16) -> u8 {
-        0x00
+        0x10
     }
 
     fn internal_write(&mut self, address: u16, value: u8) {
     }
 
     pub fn step(&mut self) -> u32 {
-        // println!("CLOCK: {} SCANLINE: {}", self.clock, self.scanline);
-
         if self.scanline >= -1 && self.scanline <= 239 {
             if self.scanline == 0 && self.clock == 0 {
                 self.clock = 1;
@@ -263,8 +263,6 @@ impl Ppu {
             if self.scanline == -1 && self.clock == 1 {
                 self.status.set_vertical_blank(false);
             }
-
-
         }
 
         if self.scanline >= 241 && self.scanline <= 260 {

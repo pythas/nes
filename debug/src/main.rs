@@ -113,9 +113,11 @@ pub fn main() {
         target = draw_text(target.right(), 0, "Z", if nes.cpu.p & (1 << 1) > 0 { color_white } else { color_gray }, &font, &texture_creator, &mut canvas);
         target = draw_text(target.right(), 0, "C", if nes.cpu.p & (1 << 0) > 0 { color_white } else { color_gray }, &font, &texture_creator, &mut canvas);
 
-        // Draw PPU state
+        // Draw CPU registers
         target = draw_text(REAL_SCREEN_WIDTH as i32 - 256, target.bottom(), &format!("S: {} C: {}", nes.cpu.bus.ppu.scanline, nes.cpu.bus.ppu.clock)[..], color_white, &font, &texture_creator, &mut canvas);
 
+        // Draw PPU state
+        target = draw_text(REAL_SCREEN_WIDTH as i32 - 256, target.bottom(), &format!("A: {:02X} X: {:02X} Y: {:02X}", nes.cpu.a, nes.cpu.x, nes.cpu.y)[..], color_white, &font, &texture_creator, &mut canvas);
 
         // Draw code
         let mut start = disassembly.iter().position(|x| x.0 == nes.cpu.pc).unwrap();
@@ -132,7 +134,8 @@ pub fn main() {
             stop = disassembly.len() - 1;
         }
 
-        let mut target = rect!(0, 0, 0, 13 * 4);
+
+        target = rect!(target.x(), target.y(), target.width(), target.height() + 13);
 
         for i in start..stop {
             target = draw_text(REAL_SCREEN_WIDTH as i32 - 256, target.bottom(), &disassembly[i].1[..], if i == current { color_highlight } else { color_white }, &font, &texture_creator, &mut canvas);
