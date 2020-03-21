@@ -67,7 +67,7 @@ impl Cartridge {
             unimplemented!();
         } else {
             self.prg_rom = rom[0x10..prg_size + 0x10].to_vec();
-            self.chr_rom = rom[0x10 + prg_size..0x010 + prg_size + chr_size].to_vec();
+            self.chr_rom = rom[0x10 + prg_size..0x10 + prg_size + chr_size].to_vec();
         }
 
         if mapper == 0b0000 {
@@ -87,7 +87,7 @@ impl Cartridge {
         }
     }
 
-    pub fn prg_read(&self, address: u16) -> u8 {
+    pub fn prg_read(&self, address: u16) -> u8 { // TODO: Option
         match self.mapper.as_ref().unwrap().prg_read_address(address) {
             None => 0x00, // panic!("Invalid address."),
             Some(address) => self.prg_rom[address as usize],
@@ -103,10 +103,12 @@ impl Cartridge {
         };
     }
 
-    pub fn chr_read(&self, address: u16) -> u8 {
+    pub fn chr_read(&self, address: u16) -> Option<u8> {
         match self.mapper.as_ref().unwrap().chr_read_address(address) {
-            None => panic!("Invalid address."),
-            Some(address) => self.prg_rom[address as usize],
+            None => None,
+            Some(address) => {
+                Some(self.chr_rom[address as usize])
+            },
         }
     }
 
@@ -114,7 +116,7 @@ impl Cartridge {
         match self.mapper.as_ref().unwrap().chr_write_address(address) {
             None => panic!("Invalid address."),
             Some(address) => {
-                self.prg_rom[address as usize] = byte;
+                self.chr_rom[address as usize] = byte;
             },
         };
     }

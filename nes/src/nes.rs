@@ -23,6 +23,11 @@ impl Nes {
 
         self.ppu_clock += self.cpu.bus.step(delta_cpu_clock);
 
+        if self.cpu.bus.nmi {
+            self.cpu.bus.nmi = false;
+            self.cpu.nmi();
+        }
+
         self.cpu_clock += delta_cpu_clock;
 
         // println!("CPU: {}", self.cpu_clock);

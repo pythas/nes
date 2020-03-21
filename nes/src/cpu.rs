@@ -793,7 +793,7 @@ impl Cpu {
     fn dec(&mut self, mode: Mode) {
         let address = self.read_address(mode, true);
         let operand = self.bus.read(address, false).wrapping_sub(1);
-
+// println!("{:x}", operand);
         self.set_flag_if_negative(operand);
         self.set_flag_if_zero(operand);
 
@@ -1087,7 +1087,9 @@ impl Cpu {
 
     fn lda(&mut self, mode: Mode) {
         let operand = self.read_operand(mode);
-
+// if operand == 0x3f {
+//     println!("adlkfjalksdjalksjd");
+// }
         self.a = operand;
 
         self.set_flag_if_zero(operand);
@@ -1283,6 +1285,24 @@ impl Cpu {
         self.set_flag(Flag::NegativeFlag, negative);
 
         self.a = (result & 0xff) as u8;
+    }
+
+    pub fn nmi(&mut self) {
+        // self.read_address(mode, true);
+
+        self.set_flag(Flag::BreakCommand, 1);
+
+        let address = self.bus.read(0xfffa, false) as u16 | (self.bus.read(0xfffb, false) as u16) << 8;
+
+        self.push((self.pc >> 8) as u8);
+        self.push(self.pc as u8);
+        self.push(self.p);
+
+        self.set_flag(Flag::InterruptDisable, 1);
+
+        self.pc = address;
+
+        self.tick(8);
     }
 
     pub fn disassemble(&mut self, start: u16, stop: u16) -> Vec<InstructionLine> {
