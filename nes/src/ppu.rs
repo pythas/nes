@@ -49,7 +49,7 @@ bitfield!{
 #[derive(Debug, Copy, Clone)]
 pub struct Color(pub u8, pub u8, pub u8);
 
-struct Palette {
+pub struct Palette {
     colors: Vec<Color>,
 }
 
@@ -57,73 +57,70 @@ impl Palette {
     pub fn new() -> Palette {
         Palette {
             colors: vec!(
-                Color(84, 84, 84),
-                Color(0, 30, 116),
-                Color(8, 16, 144),
-                Color(48, 0, 136),
-                Color(68, 0, 100),
-                Color(92, 0, 48),
-                Color(84, 4, 0),
-                Color(60, 24, 0),
-                Color(32, 42, 0),
-                Color(8, 58, 0),
-                Color(0, 64, 0),
-                Color(0, 60, 0),
-                Color(0, 50, 60),
-                Color(0, 0, 0),
-                Color(0, 0, 0),
-                Color(0, 0, 0),
-
-                Color(152, 150, 152),
-                Color(8, 76, 196),
-                Color(48, 50, 236),
-                Color(92, 30, 228),
-                Color(136, 20, 176),
-                Color(160, 20, 100),
-                Color(152, 34, 32),
-                Color(120, 60, 0),
-                Color(84, 90, 0),
-                Color(40, 114, 0),
-                Color(8, 124, 0),
-                Color(0, 118, 40),
-                Color(0, 102, 120),
-                Color(0, 0, 0),
-                Color(0, 0, 0),
-                Color(0, 0, 0),
-
-                Color(236, 238, 236),
-                Color(76, 154, 236),
-                Color(120, 124, 236),
-                Color(176, 98, 236),
-                Color(228, 84, 236),
-                Color(236, 88, 180),
-                Color(236, 106, 100),
-                Color(212, 136, 32),
-                Color(160, 170, 0),
-                Color(116, 196, 0),
-                Color(76, 208, 32),
-                Color(56, 204, 108),
-                Color(56, 180, 204),
-                Color(60, 60, 60),
-                Color(0, 0, 0),
-                Color(0, 0, 0),
-
-                Color(236, 238, 236),
-                Color(168, 204, 236),
-                Color(188, 188, 236),
-                Color(212, 178, 236),
-                Color(236, 174, 236),
-                Color(236, 174, 212),
-                Color(236, 180, 176),
-                Color(228, 196, 144),
-                Color(204, 210, 120),
-                Color(180, 222, 120),
-                Color(168, 226, 144),
-                Color(152, 226, 180),
-                Color(160, 214, 228),
-                Color(160, 162, 160),
-                Color(0, 0, 0),
-                Color(0, 0, 0),
+                Color(0x7f, 0x7f, 0x7f),
+                Color(0x00, 0x00, 0xff),
+                Color(0x00, 0x00, 0xbf),
+                Color(0x47, 0x2b, 0xbf),
+                Color(0x97, 0x00, 0x87),
+                Color(0xab, 0x00, 0x23),
+                Color(0xab, 0x13, 0x00),
+                Color(0x8b, 0x17, 0x00),
+                Color(0x53, 0x30, 0x00),
+                Color(0x00, 0x78, 0x00),
+                Color(0x00, 0x6b, 0x00),
+                Color(0x00, 0x5b, 0x00),
+                Color(0x00, 0x43, 0x58),
+                Color(0x00, 0x00, 0x00),
+                Color(0x00, 0x00, 0x00),
+                Color(0x00, 0x00, 0x00),
+                Color(0xbf, 0xbf, 0xbf),
+                Color(0x00, 0x78, 0xf8),
+                Color(0x00, 0x58, 0xf8),
+                Color(0x6b, 0x47, 0xff),
+                Color(0xdb, 0x00, 0xcd),
+                Color(0xe7, 0x00, 0x5b),
+                Color(0xf8, 0x38, 0x00),
+                Color(0xe7, 0x5f, 0x13),
+                Color(0xaf, 0x7f, 0x00),
+                Color(0x00, 0xb8, 0x00),
+                Color(0x00, 0xab, 0x00),
+                Color(0x00, 0xab, 0x47),
+                Color(0x00, 0x8b, 0x8b),
+                Color(0x00, 0x00, 0x00),
+                Color(0x00, 0x00, 0x00),
+                Color(0x00, 0x00, 0x00),
+                Color(0xf8, 0xf8, 0xf8),
+                Color(0x3f, 0xbf, 0xff),
+                Color(0x6b, 0x88, 0xff),
+                Color(0x98, 0x78, 0xf8),
+                Color(0xf8, 0x78, 0xf8),
+                Color(0xf8, 0x58, 0x98),
+                Color(0xf8, 0x78, 0x58),
+                Color(0xff, 0xa3, 0x47),
+                Color(0xf8, 0xb8, 0x00),
+                Color(0xb8, 0xf8, 0x18),
+                Color(0x5b, 0xdb, 0x57),
+                Color(0x58, 0xf8, 0x98),
+                Color(0x00, 0xeb, 0xdb),
+                Color(0x78, 0x78, 0x78),
+                Color(0x00, 0x00, 0x00),
+                Color(0x00, 0x00, 0x00),
+                Color(0xff, 0xff, 0xff),
+                Color(0xa7, 0xe7, 0xff),
+                Color(0xb8, 0xb8, 0xf8),
+                Color(0xd8, 0xb8, 0xf8),
+                Color(0xf8, 0xb8, 0xf8),
+                Color(0xfb, 0xa7, 0xc3),
+                Color(0xf0, 0xd0, 0xb0),
+                Color(0xff, 0xe3, 0xab),
+                Color(0xfb, 0xdb, 0x7b),
+                Color(0xd8, 0xf8, 0x78),
+                Color(0xb8, 0xf8, 0xb8),
+                Color(0xb8, 0xf8, 0xd8),
+                Color(0x00, 0xff, 0xff),
+                Color(0xf8, 0xd8, 0xf8),
+                Color(0x00, 0x00, 0x00),
+                Color(0x00, 0x00, 0x00),
             ),
         }
     }
@@ -159,9 +156,10 @@ pub struct Ppu {
     // palette_attribute_hi: u8,
     pub nmi: bool,
 
-    palette: Palette,
-    palette_table: [u8; 32],
+    pub palette: Palette,
+    pub palette_table: [u8; 32],
     pattern_table: [[u8; 4096]; 2],
+    name_table: [[u8; 1024]; 2],
 }
 
 impl Ppu {
@@ -183,6 +181,7 @@ impl Ppu {
             palette: Palette::new(),
             palette_table: [0; 32],
             pattern_table: [[0; 4096]; 2],
+            name_table: [[0; 1024]; 2],
         }
     }
 
@@ -380,15 +379,13 @@ impl Ppu {
         self.clock += cycles as u32;
     }
 
+    pub fn palette_color(&self, palette: u8, index: u8) -> Color {
+        let address = 0x3f00 + ((palette << 2) + index) as u16;
+        self.palette.colors[self.internal_read(address) as usize & 0x3f]
+    }
+
     pub fn debug_pixels(&self, bank: u16, palette: u16) -> Vec<Pixel> {
         let mut pixels = Vec::new();
-
-        let colors = vec!(
-            Color(0, 0, 0),
-            Color(50, 50, 50),
-            Color(100, 100, 100),
-            Color(150, 150, 150),
-        );
 
         for y in 0..16 {
             for x in 0..16 {
@@ -404,15 +401,7 @@ impl Ppu {
                         tile_lo >>= 1;
                         tile_hi >>= 1;
 
-                        let address = 0x3f00 + (palette << 2) + pixel;
-                        let color = self.palette.colors[self.internal_read(address) as usize & 0x3f];
-
-                        // let color = colors[pixel as usize];
-
-                        // println!("{:?}", self.palette_table);
-                        // for (i, el) in self.palette_table.iter().enumerate() {
-                        //     println!("{:x} {:?}", el, self.palette.colors[*el as usize]);
-                        // }
+                        let color = self.palette_color(palette as u8, pixel as u8);
 
                         pixels.push(Pixel {
                             x: x * 8 + (7 - column),

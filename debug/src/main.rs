@@ -208,12 +208,12 @@ pub fn main() {
         // Draw code
         let mut start = disassembly.iter().position(|x| x.0 == nes.cpu.pc).unwrap();
         let current = start;
-        let mut stop = start + 20;
+        let mut stop = start + 15;
 
-        if (start as i32) - 20 < 0 {
+        if (start as i32) - 15 < 0 {
             start = 0;
         } else {
-            start -= 20;
+            start -= 15;
         }
 
         if stop > disassembly.len() {
@@ -231,10 +231,25 @@ pub fn main() {
             }
         }
 
-        // Pattern table
+        // Palette
         if draw_pattern_table {
             canvas.set_logical_size(SCREEN_WIDTH, SCREEN_HEIGHT).unwrap();
 
+            let x = SCREEN_WIDTH as i32 - 256;
+            let y = SCREEN_HEIGHT as i32 - (128 + 10);
+
+            for palette in 0..8 {
+                for index in 0..4 {
+                    let color = nes.cpu.bus.ppu.palette_color(palette, index);
+
+                    canvas.set_draw_color(Color::RGB(color.0, color.1, color.2));
+                    canvas.fill_rect(Rect::new(x + palette as i32 * 8 * 4 + index as i32 * 6, y, 4, 4)).unwrap();
+                }
+            }
+        }
+
+        // Pattern table
+        if draw_pattern_table {
             let pixels_lo = nes.cpu.bus.ppu.debug_pixels(0, 0);
             let pixels_hi = nes.cpu.bus.ppu.debug_pixels(1, 0);
 
@@ -251,8 +266,8 @@ pub fn main() {
 
         canvas.present();
 
-        let frame_ticks = timer.ticks() as i32 - ticks;
-        println!("{}", frame_ticks);
+        // let frame_ticks = timer.ticks() as i32 - ticks;
+        // println!("{}", frame_ticks);
 
         // ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
