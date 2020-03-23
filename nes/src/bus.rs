@@ -15,9 +15,9 @@ pub struct Bus {
 impl Bus {
     pub fn new() -> Bus {
         let cartridge = Rc::new(RefCell::new(Cartridge::new()));
-        // cartridge.borrow_mut().load("nes\\testroms\\nestest.nes");
+        cartridge.borrow_mut().load("nes\\testroms\\nestest.nes");
         // cartridge.borrow_mut().load("debug\\roms\\Balloon Fight (USA).nes");
-        cartridge.borrow_mut().load("debug\\roms\\Donkey Kong (World) (Rev A).nes");
+        // cartridge.borrow_mut().load("debug\\roms\\Donkey Kong (World) (Rev A).nes");
 
         Bus {
             ram: [0; 0x10000],

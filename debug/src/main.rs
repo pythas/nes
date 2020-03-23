@@ -206,28 +206,37 @@ pub fn main() {
         target = text_renderer.render(Point::new(REAL_SCREEN_WIDTH as i32 - 256, target.bottom()), &format!("A: {:02X} X: {:02X} Y: {:02X}", nes.cpu.a, nes.cpu.x, nes.cpu.y)[..], color_white, &mut canvas);
 
         // Draw code
-        let mut start = disassembly.iter().position(|x| x.0 == nes.cpu.pc).unwrap();
-        let current = start;
-        let mut stop = start + 15;
+        let start = disassembly.iter().position(|x| x.0 == nes.cpu.pc);
 
-        if (start as i32) - 15 < 0 {
-            start = 0;
-        } else {
-            start -= 15;
-        }
+        match start {
+            Some(start) => {
+                let mut start = start;
+                let current = start;
+                let mut stop = start + 15;
 
-        if stop > disassembly.len() {
-            stop = disassembly.len() - 1;
-        }
+                if (start as i32) - 15 < 0 {
+                    start = 0;
+                } else {
+                    start -= 15;
+                }
+
+                if stop > disassembly.len() {
+                    stop = disassembly.len() - 1;
+                }
 
 
-        target = Rect::new(target.x(), target.y(), target.width(), target.height() + 13);
+                target = Rect::new(target.x(), target.y(), target.width(), target.height() + 13);
 
-        for i in start..stop {
-            let text = &disassembly[i].1[..];
+                for i in start..stop {
+                    let text = &disassembly[i].1[..];
 
-            if !text.is_empty() {
-                target = text_renderer.render(Point::new(REAL_SCREEN_WIDTH as i32 - 256, target.bottom()), text, if i == current { color_highlight } else { color_white }, &mut canvas);
+                    if !text.is_empty() {
+                        target = text_renderer.render(Point::new(REAL_SCREEN_WIDTH as i32 - 256, target.bottom()), text, if i == current { color_highlight } else { color_white }, &mut canvas);
+                    }
+                }
+            },
+            None => {
+                println!("Could not find PC {:04x} in disassembly", nes.cpu.pc);
             }
         }
 

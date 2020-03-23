@@ -173,7 +173,7 @@ impl Ppu {
             vram: Address(0x00),
             vram_temp: Address(0x00),
             fine_x: 0,
-            scanline: 240,
+            scanline: -1,
             latch: false,
             data_buffer: 0,
             address_buffer: 0,
