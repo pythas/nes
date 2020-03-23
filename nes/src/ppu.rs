@@ -404,10 +404,15 @@ impl Ppu {
                         tile_lo >>= 1;
                         tile_hi >>= 1;
 
-                        // let address = 0x3f00 + (palette << 2) + pixel;
-                        // let color = self.palette.colors[self.internal_read(address) as usize & 0x3f];
+                        let address = 0x3f00 + (palette << 2) + pixel;
+                        let color = self.palette.colors[self.internal_read(address) as usize & 0x3f];
 
-                        let color = colors[pixel as usize];
+                        // let color = colors[pixel as usize];
+
+                        // println!("{:?}", self.palette_table);
+                        // for (i, el) in self.palette_table.iter().enumerate() {
+                        //     println!("{:x} {:?}", el, self.palette.colors[*el as usize]);
+                        // }
 
                         pixels.push(Pixel {
                             x: x * 8 + (7 - column),
