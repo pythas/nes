@@ -4,8 +4,9 @@ use sdl2::rect::Point;
 use sdl2::pixels::Color;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use sdl2::render::TextureQuery;
+use sdl2::render::{TextureQuery, TextureAccess};
 use sdl2::rect::Rect;
+use sdl2::pixels::PixelFormatEnum;
 
 use std::time::Duration;
 
@@ -16,6 +17,8 @@ static SCREEN_WIDTH: u32 = 640;
 static SCREEN_HEIGHT: u32 = 480;
 static REAL_SCREEN_WIDTH: u32 = 1024;
 static REAL_SCREEN_HEIGHT: u32 = 768;
+static NES_SCREEN_WIDTH: u32 = 256;
+static NES_SCREEN_HEIGHT: u32 = 240;
 
 struct TextRenderer<'a> {
     symbols_texture: sdl2::render::Texture<'a>,
@@ -139,6 +142,17 @@ pub fn main() {
     // ...
     let mut event_pump = sdl_context.event_pump().unwrap();
 
+    // let mut texture = texture_creator
+    //     .create_texture(
+    //         PixelFormatEnum::BGR24,
+    //         TextureAccess::Streaming,
+    //         NES_SCREEN_WIDTH as u32,
+    //         NES_SCREEN_HEIGHT as u32
+    //     )
+    //     .unwrap();
+
+    let mut texture = texture_creator.create_texture_streaming(PixelFormatEnum::RGB24, 256, 240).unwrap();
+
     // NES
     let cpu = Cpu::new();
     let mut nes = Nes::new(cpu);
@@ -149,6 +163,7 @@ pub fn main() {
     let disassembly = nes.cpu.disassemble(nes.cpu.pc, 0xffff);
     let mut halt = true;
     let mut draw_pattern_table = false;
+    let mut draw_code = true;
     let color_white = Color::RGBA(255, 255, 255, 255);
     let color_gray = Color::RGBA(255, 255, 255, 150);
     let color_highlight = Color::RGBA(0, 255, 150, 255);
@@ -177,6 +192,9 @@ pub fn main() {
                 Event::KeyDown { keycode: Some(Keycode::D), .. } => {
                     draw_pattern_table = !draw_pattern_table;
                 },
+                Event::KeyDown { keycode: Some(Keycode::C), .. } => {
+                    draw_code = !draw_code;
+                },
                 _ => {}
             }
         }
@@ -187,56 +205,65 @@ pub fn main() {
 
         canvas.set_logical_size(REAL_SCREEN_WIDTH, REAL_SCREEN_HEIGHT).unwrap();
 
-        // Draw CPU state
-        let mut target = Rect::new(REAL_SCREEN_WIDTH as i32 - 256, 0, 0, 0);
+        // Frame
+        texture
+            .update(None, &*nes.cpu.bus.ppu.pixels, (NES_SCREEN_WIDTH * 3) as usize)
+            .unwrap();
 
-        target = text_renderer.render(Point::new(target.right(), 0), "N", if nes.cpu.p & (1 << 7) > 0 { color_white } else { color_gray }, &mut canvas);
-        target = text_renderer.render(Point::new(target.right(), 0), "V", if nes.cpu.p & (1 << 6) > 0 { color_white } else { color_gray }, &mut canvas);
-        target = text_renderer.render(Point::new(target.right(), 0), "U", if nes.cpu.p & (1 << 5) > 0 { color_white } else { color_gray }, &mut canvas);
-        target = text_renderer.render(Point::new(target.right(), 0), "B", if nes.cpu.p & (1 << 4) > 0 { color_white } else { color_gray }, &mut canvas);
-        target = text_renderer.render(Point::new(target.right(), 0), "D", if nes.cpu.p & (1 << 3) > 0 { color_white } else { color_gray }, &mut canvas);
-        target = text_renderer.render(Point::new(target.right(), 0), "I", if nes.cpu.p & (1 << 2) > 0 { color_white } else { color_gray }, &mut canvas);
-        target = text_renderer.render(Point::new(target.right(), 0), "Z", if nes.cpu.p & (1 << 1) > 0 { color_white } else { color_gray }, &mut canvas);
-        target = text_renderer.render(Point::new(target.right(), 0), "C", if nes.cpu.p & (1 << 0) > 0 { color_white } else { color_gray }, &mut canvas);
+        canvas.copy(&texture, None, Rect::new(0, 0, NES_SCREEN_WIDTH * 2, NES_SCREEN_HEIGHT * 2)).unwrap();
 
-        // Draw CPU registers
-        target = text_renderer.render(Point::new(REAL_SCREEN_WIDTH as i32 - 256, target.bottom()), &format!("S: {} C: {}", nes.cpu.bus.ppu.scanline, nes.cpu.bus.ppu.clock)[..], color_white, &mut canvas);
+        if draw_code {
+            // Draw CPU state
+            let mut target = Rect::new(REAL_SCREEN_WIDTH as i32 - 256, 0, 0, 0);
 
-        // Draw PPU state
-        target = text_renderer.render(Point::new(REAL_SCREEN_WIDTH as i32 - 256, target.bottom()), &format!("A: {:02X} X: {:02X} Y: {:02X}", nes.cpu.a, nes.cpu.x, nes.cpu.y)[..], color_white, &mut canvas);
+            target = text_renderer.render(Point::new(target.right(), 0), "N", if nes.cpu.p & (1 << 7) > 0 { color_white } else { color_gray }, &mut canvas);
+            target = text_renderer.render(Point::new(target.right(), 0), "V", if nes.cpu.p & (1 << 6) > 0 { color_white } else { color_gray }, &mut canvas);
+            target = text_renderer.render(Point::new(target.right(), 0), "U", if nes.cpu.p & (1 << 5) > 0 { color_white } else { color_gray }, &mut canvas);
+            target = text_renderer.render(Point::new(target.right(), 0), "B", if nes.cpu.p & (1 << 4) > 0 { color_white } else { color_gray }, &mut canvas);
+            target = text_renderer.render(Point::new(target.right(), 0), "D", if nes.cpu.p & (1 << 3) > 0 { color_white } else { color_gray }, &mut canvas);
+            target = text_renderer.render(Point::new(target.right(), 0), "I", if nes.cpu.p & (1 << 2) > 0 { color_white } else { color_gray }, &mut canvas);
+            target = text_renderer.render(Point::new(target.right(), 0), "Z", if nes.cpu.p & (1 << 1) > 0 { color_white } else { color_gray }, &mut canvas);
+            target = text_renderer.render(Point::new(target.right(), 0), "C", if nes.cpu.p & (1 << 0) > 0 { color_white } else { color_gray }, &mut canvas);
 
-        // Draw code
-        let start = disassembly.iter().position(|x| x.0 == nes.cpu.pc);
+            // Draw CPU registers
+            target = text_renderer.render(Point::new(REAL_SCREEN_WIDTH as i32 - 256, target.bottom()), &format!("S: {} C: {}", nes.cpu.bus.ppu.scanline, nes.cpu.bus.ppu.clock)[..], color_white, &mut canvas);
 
-        match start {
-            Some(start) => {
-                let mut start = start;
-                let current = start;
-                let mut stop = start + 15;
+            // Draw PPU state
+            target = text_renderer.render(Point::new(REAL_SCREEN_WIDTH as i32 - 256, target.bottom()), &format!("A: {:02X} X: {:02X} Y: {:02X}", nes.cpu.a, nes.cpu.x, nes.cpu.y)[..], color_white, &mut canvas);
 
-                if (start as i32) - 15 < 0 {
-                    start = 0;
-                } else {
-                    start -= 15;
-                }
+            // Draw code
+            let start = disassembly.iter().position(|x| x.0 == nes.cpu.pc);
 
-                if stop > disassembly.len() {
-                    stop = disassembly.len() - 1;
-                }
+            match start {
+                Some(start) => {
+                    let mut start = start;
+                    let current = start;
+                    let mut stop = start + 15;
 
-
-                target = Rect::new(target.x(), target.y(), target.width(), target.height() + 13);
-
-                for i in start..stop {
-                    let text = &disassembly[i].1[..];
-
-                    if !text.is_empty() {
-                        target = text_renderer.render(Point::new(REAL_SCREEN_WIDTH as i32 - 256, target.bottom()), text, if i == current { color_highlight } else { color_white }, &mut canvas);
+                    if (start as i32) - 15 < 0 {
+                        start = 0;
+                    } else {
+                        start -= 15;
                     }
+
+                    if stop > disassembly.len() {
+                        stop = disassembly.len() - 1;
+                    }
+
+
+                    target = Rect::new(target.x(), target.y(), target.width(), target.height() + 13);
+
+                    for i in start..stop {
+                        let text = &disassembly[i].1[..];
+
+                        if !text.is_empty() {
+                            target = text_renderer.render(Point::new(REAL_SCREEN_WIDTH as i32 - 256, target.bottom()), text, if i == current { color_highlight } else { color_white }, &mut canvas);
+                        }
+                    }
+                },
+                None => {
+                    println!("Could not find PC {:04x} in disassembly", nes.cpu.pc);
                 }
-            },
-            None => {
-                println!("Could not find PC {:04x} in disassembly", nes.cpu.pc);
             }
         }
 
@@ -272,6 +299,28 @@ pub fn main() {
                 canvas.draw_point(Point::new((SCREEN_WIDTH as i32 - 128) + pixel.x as i32, (SCREEN_HEIGHT as i32 - 128) + pixel.y as i32)).unwrap();
             }
         }
+
+        // Frame
+        // let nametable = nes.cpu.bus.ppu.name_table[0];
+
+        // for y in 0..32 {
+        //     for x in 0..32 {
+        //         let id = nametable[y * 32 + x];
+
+        //         text_renderer.render(Point::new((x * 20) as i32, (y * 20) as i32), &format!("{:02x}", id)[..], color_white, &mut canvas);
+        //     }
+        // }
+
+
+
+        // for y in 0..240  {
+        //     for x in 0..256  {
+        //         let color = nes.cpu.bus.ppu.pixels[y][x];
+
+        //         // canvas.set_draw_color(Color::RGB(color.0, color.1, color.2));
+        //         // canvas.draw_point(Point::new(x as i32, y as i32)).unwrap();
+        //     }
+        // }
 
         canvas.present();
 

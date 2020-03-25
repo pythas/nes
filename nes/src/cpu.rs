@@ -1087,9 +1087,7 @@ impl Cpu {
 
     fn lda(&mut self, mode: Mode) {
         let operand = self.read_operand(mode);
-// if operand == 0x3f {
-//     println!("adlkfjalksdjalksjd");
-// }
+
         self.a = operand;
 
         self.set_flag_if_zero(operand);

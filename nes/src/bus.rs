@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use std::cell::{RefCell, Ref, RefMut};
+use std::cell::RefCell;
 
 use crate::ppu::Ppu;
 use crate::cartridge::Cartridge;

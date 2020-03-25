@@ -148,18 +148,27 @@ pub struct Ppu {
 
     latch: bool,
     data_buffer: u8,
-    address_buffer: u16,
 
-    // pattern_table_lo: u16,
-    // pattern_table_hi: u16,
-    // palette_attribute_lo: u8,
-    // palette_attribute_hi: u8,
+
     pub nmi: bool,
 
     pub palette: Palette,
     pub palette_table: [u8; 32],
-    pattern_table: [[u8; 4096]; 2],
-    name_table: [[u8; 1024]; 2],
+    pub pattern_table: [[u8; 4096]; 2],
+    pub name_table: [[u8; 1024]; 4],
+
+
+    next_name_table: u8,
+    next_attribute_table: u8,
+    next_background_lo: u8,
+    next_background_hi: u8,
+
+    attribute_table_lo: u8,
+    attribute_table_hi: u8,
+    background_shift_lo: u16,
+    background_shift_hi: u16,
+
+    pub pixels: Box<[u8; 256 * 240 * 3]>,
 }
 
 impl Ppu {
@@ -176,12 +185,23 @@ impl Ppu {
             scanline: -1,
             latch: false,
             data_buffer: 0,
-            address_buffer: 0,
             nmi: false,
             palette: Palette::new(),
             palette_table: [0; 32],
             pattern_table: [[0; 4096]; 2],
-            name_table: [[0; 1024]; 2],
+            name_table: [[0; 1024]; 4],
+
+            next_name_table: 0,
+            next_attribute_table: 0,
+            next_background_lo: 0,
+            next_background_hi: 0,
+
+            attribute_table_lo: 0,
+            attribute_table_hi: 0,
+            background_shift_lo: 0,
+            background_shift_hi: 0,
+
+            pixels: Box::new([0; 256 * 240 * 3]),
         }
     }
 
@@ -289,12 +309,10 @@ impl Ppu {
             None => {
                 match address {
                     0x0000..=0x1fff => {
-                        // pattern
-                        0x00
+                        self.pattern_table[((address & 0x1000) >> 12) as usize][(address & 0x0fff) as usize]
                     },
                     0x2000..=0x3eff => {
-                        // table
-                        0x00
+                        self.name_table[((address & 0x0c00) >> 10) as usize][(address & 0x03ff) as usize]
                     },
                     0x3f00..=0x3fff => {
                         let address = address & 0x001F;
@@ -323,6 +341,7 @@ impl Ppu {
                 self.pattern_table[((address & 0x1000) >> 12) as usize][(address & 0x0fff) as usize] = value;
             },
             0x2000..=0x3eff => {
+                self.name_table[((address & 0x0c00) >> 10) as usize][(address & 0x03ff) as usize] = value;
             },
             0x3f00..=0x3fff => {
                 let address = address & 0x001F;
@@ -342,12 +361,72 @@ impl Ppu {
 
     pub fn step(&mut self) -> u32 {
         if self.scanline >= -1 && self.scanline <= 239 {
-            if self.scanline == 0 && self.clock == 0 {
-                self.clock = 1;
-            }
+            // if self.scanline == 0 && self.clock == 0 {
+            //     // self.clock = 1;
+            //     self.tick(1);
+            // }
 
             if self.scanline == -1 && self.clock == 1 {
                 self.status.set_vertical_blank(false);
+            }
+
+            match self.clock {
+                1..=255 | 322..=337 => {
+                    match self.clock % 8 {
+                        1 => {
+                            self.next_name_table = self.internal_read(0x2000 | (self.vram.get() & 0xfff));
+
+                            self.background_shift_lo = (self.background_shift_lo & 0xFF00) | self.next_background_lo as u16;
+                            self.background_shift_hi = (self.background_shift_hi & 0xFF00) | self.next_background_hi as u16;
+
+                            self.attribute_table_lo = (self.next_attribute_table & 0x01 > 0) as u8;
+                            self.attribute_table_hi = (self.next_attribute_table & 0x02 > 0) as u8;
+                        },
+                        3 => {
+                            self.next_attribute_table = self.internal_read(0x23C0 | (((self.vram.nametable() as u16) << 10) | (((self.vram.coarse_y() / 4) as u16) << 3) | self.vram.coarse_y() as u16 / 4));
+
+                            if self.vram.coarse_y() & 0x02 > 0 {
+                                self.next_attribute_table >>= 4;
+                            }
+
+                            if self.vram.coarse_x() & 0x02 > 0 {
+                                self.next_attribute_table >>= 2;
+                            }
+                        },
+                        5 => {
+                            self.next_background_lo = self.internal_read(self.control.background() as u16 * 0x1000 + self.next_name_table as u16 * 16 + self.vram.fine_y() as u16);
+                        },
+                        // 6 => {},
+                        7 => {
+                            self.next_background_hi = self.internal_read(self.control.background() as u16 * 0x1000 + self.next_name_table as u16 * 16 + self.vram.fine_y() as u16 + 8);
+                        },
+                        0 => {
+                            // ++horizonal
+                        },
+                        _ => (),
+                    }
+                },
+                256 => {
+                    // ++vertial
+                }
+                _ => (),
+            }
+
+            if self.mask.background() && self.scanline >= 0 && self.scanline < 240 && self.clock < 256  {
+                let offset = 0x8000 >> self.fine_x;
+
+                let pixel = ((((self.background_shift_hi & offset) > 0) as u8) << 1) | ((self.background_shift_lo & offset) > 0) as u8;
+
+                let palette = ((((self.attribute_table_hi & offset as u8) > 0) as u8) << 1) | ((self.attribute_table_lo & offset as u8) > 0) as u8;
+
+                let color = self.palette_color(palette as u8, pixel as u8);
+
+                let x = self.clock as u32;
+                let y = self.scanline as u32;
+
+                self.pixels[((y * 256 + x) * 3) as usize] = color.0;
+                self.pixels[((y * 256 + x) * 3 + 1) as usize] = color.1;
+                self.pixels[((y * 256 + x) * 3 + 2) as usize] = color.2;
             }
         }
 
