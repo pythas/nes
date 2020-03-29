@@ -15,8 +15,8 @@ use nes::cpu::Cpu;
 
 static SCREEN_WIDTH: u32 = 640;
 static SCREEN_HEIGHT: u32 = 480;
-static REAL_SCREEN_WIDTH: u32 = 1024;
-static REAL_SCREEN_HEIGHT: u32 = 768;
+static REAL_SCREEN_WIDTH: u32 = 1300;
+static REAL_SCREEN_HEIGHT: u32 = 960;
 static NES_SCREEN_WIDTH: u32 = 256;
 static NES_SCREEN_HEIGHT: u32 = 240;
 
@@ -142,16 +142,7 @@ pub fn main() {
     // ...
     let mut event_pump = sdl_context.event_pump().unwrap();
 
-    // let mut texture = texture_creator
-    //     .create_texture(
-    //         PixelFormatEnum::BGR24,
-    //         TextureAccess::Streaming,
-    //         NES_SCREEN_WIDTH as u32,
-    //         NES_SCREEN_HEIGHT as u32
-    //     )
-    //     .unwrap();
-
-    let mut texture = texture_creator.create_texture_streaming(PixelFormatEnum::RGB24, 256, 240).unwrap();
+    let mut texture = texture_creator.create_texture_streaming(PixelFormatEnum::RGB24, NES_SCREEN_WIDTH, NES_SCREEN_HEIGHT).unwrap();
 
     // NES
     let cpu = Cpu::new();
@@ -210,7 +201,7 @@ pub fn main() {
             .update(None, &*nes.cpu.bus.ppu.pixels, (NES_SCREEN_WIDTH * 3) as usize)
             .unwrap();
 
-        canvas.copy(&texture, None, Rect::new(0, 0, NES_SCREEN_WIDTH * 2, NES_SCREEN_HEIGHT * 2)).unwrap();
+        canvas.copy(&texture, None, Rect::new(0, 0, NES_SCREEN_WIDTH * 3, NES_SCREEN_HEIGHT * 3)).unwrap();
 
         if draw_code {
             // Draw CPU state
@@ -226,7 +217,7 @@ pub fn main() {
             target = text_renderer.render(Point::new(target.right(), 0), "C", if nes.cpu.p & (1 << 0) > 0 { color_white } else { color_gray }, &mut canvas);
 
             // Draw CPU registers
-            target = text_renderer.render(Point::new(REAL_SCREEN_WIDTH as i32 - 256, target.bottom()), &format!("S: {} C: {}", nes.cpu.bus.ppu.scanline, nes.cpu.bus.ppu.clock)[..], color_white, &mut canvas);
+            target = text_renderer.render(Point::new(REAL_SCREEN_WIDTH as i32 - 256, target.bottom()), &format!("S: {} C: {}", nes.cpu.bus.ppu.v, nes.cpu.bus.ppu.h)[..], color_white, &mut canvas);
 
             // Draw PPU state
             target = text_renderer.render(Point::new(REAL_SCREEN_WIDTH as i32 - 256, target.bottom()), &format!("A: {:02X} X: {:02X} Y: {:02X}", nes.cpu.a, nes.cpu.x, nes.cpu.y)[..], color_white, &mut canvas);
@@ -310,8 +301,6 @@ pub fn main() {
         //         text_renderer.render(Point::new((x * 20) as i32, (y * 20) as i32), &format!("{:02x}", id)[..], color_white, &mut canvas);
         //     }
         // }
-
-
 
         // for y in 0..240  {
         //     for x in 0..256  {

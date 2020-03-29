@@ -1,5 +1,6 @@
 /target
 as65
 debug/roms
+nes/testroms
 *.dll
 *.ttf

@@ -442,6 +442,26 @@ impl Cpu {
             });
         }
 
+        // For blargg test
+        // let mut done = false;
+        // let mut s = String::new();
+        // let mut address = 0x6000;
+
+        // while !done {
+        //     let c = self.bus.read(address, true);
+
+        //     if c == 0x00 {
+        //         done =true;
+        //     } else {
+        //         s.push(c as char);
+        //         address += 1;
+        //     }
+        // }
+
+        // if !s.is_empty() {
+        //     println!("{}", s);
+        // }
+
         self.clock
     }
 

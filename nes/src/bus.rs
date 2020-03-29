@@ -14,14 +14,19 @@ pub struct Bus {
 
 impl Bus {
     pub fn new() -> Bus {
+        // TODO: Move
         let cartridge = Rc::new(RefCell::new(Cartridge::new()));
-        cartridge.borrow_mut().load("nes\\testroms\\nestest.nes");
+        // cartridge.borrow_mut().load("nes\\testroms\\instr_test-v5\\rom_singles\\01-basics.nes");
+        // cartridge.borrow_mut().load("nes\\testroms\\nestest.nes");
         // cartridge.borrow_mut().load("debug\\roms\\Balloon Fight (USA).nes");
-        // cartridge.borrow_mut().load("debug\\roms\\Donkey Kong (World) (Rev A).nes");
+        cartridge.borrow_mut().load("debug\\roms\\Donkey Kong (World) (Rev A).nes");
+
+        let mut ppu = Ppu::new(cartridge.clone());
+        ppu.init();
 
         Bus {
             ram: [0; 0x10000],
-            ppu: Ppu::new(cartridge.clone()),
+            ppu,
             nmi: false,
             cartridge,
             ppu_clock: 0,
@@ -37,10 +42,8 @@ impl Bus {
         match address {
             0x0000..=0x1fff => self.ram[(address & 0x07ff) as usize],
             0x2000..=0x3fff => self.ppu.read(address & 0x0007, debug),
-            0x4200..=0xffff => self.cartridge.borrow_mut().prg_read(address),
-            _ => {
-                0x00
-            }
+            0x4000..=0x401f => 0x00,
+            0x4020..=0xffff => self.cartridge.borrow_mut().prg_read(address),
         }
     }
 
@@ -48,8 +51,10 @@ impl Bus {
         match address {
             0x0000..=0x1fff => self.ram[(address & 0x07ff) as usize] = value,
             0x2000..=0x3fff => self.ppu.write(address & 0x0007, value),
-            0x4200..=0xffff => self.cartridge.borrow_mut().prg_write(address, value),
-            _ => {}
+            0x4000..=0x401f => (),
+            0x4020..=0xffff => {
+                self.cartridge.borrow_mut().prg_write(address, value);
+            },
         }
     }
 
@@ -61,10 +66,8 @@ impl Bus {
                 self.ppu.nmi = false;
                 self.nmi = true;
             }
-
         }
 
-        // println!("PPU: {}", self.ppu_clock);
         self.ppu_clock
    }
 }

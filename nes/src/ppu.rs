@@ -1,11 +1,34 @@
 use std::rc::Rc;
-use std::cell::{RefCell, Ref, RefMut};
+use std::cell::{RefCell};
 
 use crate::cartridge::Cartridge;
 
+const NUM_DOTS: usize = 341;
+const NUM_SCANLINES: usize = 262;
+
+// TODO: u32
+const EVENT_OUTPUT: u16                    = 0b0000_0000_0000_0001;
+const EVENT_SHIFT_BACKGROUND: u16          = 0b0000_0000_0000_0010;
+const EVENT_SHIFT_SPRITE: u16              = 0b0000_0000_0000_0100;
+const EVENT_RELOAD_BACKGROUND: u16         = 0b0000_0000_0000_1000;
+const EVENT_FETCH_NAME_TABLE: u16          = 0b0000_0000_0001_0000;
+const EVENT_FETCH_ATTRIBUTE_TABLE: u16     = 0b0000_0000_0010_0000;
+const EVENT_FETCH_LOW_BACKGORUND: u16      = 0b0000_0000_0100_0000;
+const EVENT_FETCH_HIGH_BACKGROUND: u16     = 0b0000_0000_1000_0000;
+const EVENT_SET_VERTICAL_BLANK: u16        = 0b0000_0001_0000_0000;
+const EVENT_CLEAR_VERTICAL_BLANK: u16      = 0b0000_0010_0000_0000;
+const EVENT_INCREMENT_HORIZONTAL: u16      = 0b0000_0100_0000_0000;
+const EVENT_INCREMENT_VERTICAL: u16        = 0b0000_1000_0000_0000;
+const EVENT_SET_HORIZONTAL: u16            = 0b0001_0000_0000_0000;
+const EVENT_SET_VERTICAL: u16              = 0b0010_0000_0000_0000;
+const EVENT_SECONDARY_OAM_CLEAR: u16       = 0b0100_0000_0000_0000;
+const EVENT_SPRITE_EVALUATION: u16         = 0b1000_0000_0000_0000;
+// const EVENT_FETCH_SPRITE: u16              = 0b0001_0000_0000_0000_0000;
+
 bitfield!{
     struct Control(u8);
-    nametable,          _: 1, 0;
+    nametable_h,        _:    0;
+    nametable_v,        _:    1;
     increment,          _:    2;
     sprite,             _:    3;
     background,         _:    4;
@@ -21,7 +44,7 @@ bitfield!{
     background_left,    _:    1;
     sprite_left,        _:    2;
     background,         _:    3;
-    sprites,            _:    4;
+    sprite,             _:    4;
     emphasis_red,       _:    5;
     emphasis_green,     _:    6;
     emphasis_blue,      _:    7;
@@ -41,7 +64,8 @@ bitfield!{
     struct Address(u16);
     u8, coarse_x,       set_coarse_x:        4, 0;
     u8, coarse_y,       set_coarse_y:        9, 5;
-    u8, nametable,      set_nametable:     11, 10;
+    u8, nametable_h,    set_nametable_h:       10;
+    u8, nametable_v,    set_nametable_v:       11;
     u8, fine_y,         set_fine_y:        14, 12;
     u16, get,           _:                  14, 0;
 }
@@ -133,9 +157,36 @@ pub struct Pixel {
     pub color: Color,
 }
 
+pub struct Data {
+    name_table: u8,
+    attribute_table: u8,
+    background_low: u8,
+    background_high: u8,
+    shift_background_low: u16,
+    shift_background_high: u16,
+    shift_attribute_low: u16,
+    shift_attribute_high: u16,
+}
+
+impl Data {
+    pub fn new() -> Data {
+        Data {
+            name_table: 0,
+            attribute_table: 0,
+            background_low: 0,
+            background_high: 0,
+            shift_background_low: 0,
+            shift_background_high: 0,
+            shift_attribute_low: 0,
+            shift_attribute_high: 0,
+        }
+    }
+}
+
 pub struct Ppu {
     cartridge: Rc<RefCell<Cartridge>>,
-    pub clock: u32,
+    pub h: usize,
+    pub v: usize,
     control: Control,
     mask: Mask,
     status: Status,
@@ -144,7 +195,6 @@ pub struct Ppu {
     vram_temp: Address,
     fine_x: u8,
 
-    pub scanline: i16,
 
     latch: bool,
     data_buffer: u8,
@@ -157,32 +207,30 @@ pub struct Ppu {
     pub pattern_table: [[u8; 4096]; 2],
     pub name_table: [[u8; 1024]; 4],
 
-
-    next_name_table: u8,
-    next_attribute_table: u8,
-    next_background_lo: u8,
-    next_background_hi: u8,
-
-    attribute_table_lo: u8,
-    attribute_table_hi: u8,
-    background_shift_lo: u16,
-    background_shift_hi: u16,
-
     pub pixels: Box<[u8; 256 * 240 * 3]>,
+    // pub debug_pixels: Box<[u8; NUM_DOTS * NUM_SCANLINES * 3]>,
+
+    events: Box<[[u16; NUM_DOTS]; NUM_SCANLINES]>,
+
+    odd_frame: bool,
+
+    data: Data,
+
+    pub frame_ready: bool,
 }
 
 impl Ppu {
     pub fn new(cartridge: Rc<RefCell<Cartridge>>) -> Ppu {
         Ppu {
             cartridge,
-            clock: 0,
+            h: 0,
+            v: 0,
             control: Control(0x00),
             mask: Mask(0x00),
             status: Status(0x00),
             vram: Address(0x00),
             vram_temp: Address(0x00),
             fine_x: 0,
-            scanline: -1,
             latch: false,
             data_buffer: 0,
             nmi: false,
@@ -191,23 +239,20 @@ impl Ppu {
             pattern_table: [[0; 4096]; 2],
             name_table: [[0; 1024]; 4],
 
-            next_name_table: 0,
-            next_attribute_table: 0,
-            next_background_lo: 0,
-            next_background_hi: 0,
-
-            attribute_table_lo: 0,
-            attribute_table_hi: 0,
-            background_shift_lo: 0,
-            background_shift_hi: 0,
-
             pixels: Box::new([0; 256 * 240 * 3]),
+            // debug_pixels: Box::new([0; NUM_DOTS * NUM_SCANLINES * 3]),
+
+            events: Box::new([[0; NUM_DOTS]; NUM_SCANLINES]),
+
+            odd_frame: false,
+
+            data: Data::new(),
+
+            frame_ready: false,
         }
     }
 
     pub fn read(&mut self, address: u16, debug: bool) -> u8 {
-        // println!("PPU READ REGISTER {:04x}", address);
-
         match address % 8 {
             0x0000 => {
                 0x00
@@ -217,10 +262,10 @@ impl Ppu {
             },
             0x0002 => {
                 let status = self.status.get() & 0xe0;
-                // TODO: add sprite overflow
 
                 if !debug {
                     self.status.set_vertical_blank(false);
+                    self.latch = false;
                 }
 
                 status
@@ -254,32 +299,30 @@ impl Ppu {
     }
 
     pub fn write(&mut self, address: u16, value: u8) {
-        // println!("PPU WRITE REGISTER {:04x} {:x}", address, value);
-
         // TODO: Ingore for 29 658 cycles after reset
 
         match address {
             0x0000 => {
                 self.control = Control(value);
-                self.vram_temp.set_nametable(self.control.nametable());
-                self.latch = false;
+                self.vram_temp.set_nametable_h(self.control.nametable_h());
+                self.vram_temp.set_nametable_v(self.control.nametable_v());
             },
             0x0001 => {
                 self.mask = Mask(value);
             },
-            0x0002 => unimplemented!(),
+            0x0002 => {},
             0x0003 => {},
-            0x0004 => unimplemented!(),
+            0x0004 => {},
             0x0005 => {
-                // if !self.latch {
-                //     self.fine_x = value & 0x07;
-                //     self.vram_temp.set_coarse_x(value >> 3);
-                //     self.latch = true;
-                // } else {
-                //     self.vram_temp.set_fine_y(value & 0x07);
-			    //     self.vram_temp.set_coarse_y(value >> 3);
-                //     self.latch = false;
-                // }
+                if !self.latch {
+                    self.fine_x = value & 0x07;
+                    self.vram_temp.set_coarse_x(value >> 3);
+                    self.latch = true;
+                } else {
+                    self.vram_temp.set_fine_y(value & 0x07);
+			        self.vram_temp.set_coarse_y(value >> 3);
+                    self.latch = false;
+                }
             }
             0x0006 => {
                 if !self.latch {
@@ -292,7 +335,6 @@ impl Ppu {
                 }
             },
             0x0007 => {
-
                 self.internal_write(self.vram.get(), value);
                 self.vram = Address(self.vram.get() + if self.control.increment() { 32 } else { 1 });
             },
@@ -301,8 +343,6 @@ impl Ppu {
     }
 
     fn internal_read(&self, address: u16) -> u8 {
-        // println!("PPU READ {:04x}", address);
-
         let address = address & 0x3fff;
 
         match self.cartridge.borrow().chr_read(address) {
@@ -312,7 +352,23 @@ impl Ppu {
                         self.pattern_table[((address & 0x1000) >> 12) as usize][(address & 0x0fff) as usize]
                     },
                     0x2000..=0x3eff => {
-                        self.name_table[((address & 0x0c00) >> 10) as usize][(address & 0x03ff) as usize]
+                        let address = address & 0x0fff;
+
+                        match address {
+                            0x0000..=0x03ff => {
+                                self.name_table[0][(address & 0x03ff) as usize]
+                            },
+                            0x0400..=0x07ff => {
+                                self.name_table[0][(address & 0x03ff) as usize]
+                            },
+                            0x0800..=0x0bff => {
+                                self.name_table[1][(address & 0x03ff) as usize]
+                            },
+                            0x0c00..=0x0fff => {
+                                self.name_table[1][(address & 0x03ff) as usize]
+                            }
+                            _ => 0x00,
+                        }
                     },
                     0x3f00..=0x3fff => {
                         let address = address & 0x001F;
@@ -334,128 +390,50 @@ impl Ppu {
     }
 
     fn internal_write(&mut self, address: u16, value: u8) {
-        // TODO: Cart write first
+        let address = address & 0x3fff;
 
-        match address {
-            0x0000..=0x1fff => {
-                self.pattern_table[((address & 0x1000) >> 12) as usize][(address & 0x0fff) as usize] = value;
-            },
-            0x2000..=0x3eff => {
-                self.name_table[((address & 0x0c00) >> 10) as usize][(address & 0x03ff) as usize] = value;
-            },
-            0x3f00..=0x3fff => {
-                let address = address & 0x001F;
-                let address = match address {
-                    0x0010 => 0x0000,
-                    0x0014 => 0x0004,
-                    0x0018 => 0x0008,
-                    0x001c => 0x000c,
-                    _ => address,
-                };
+        match self.cartridge.borrow_mut().chr_write(address, value) {
+            None => {
+                match address {
+                    0x0000..=0x1fff => {
+                        self.pattern_table[((address & 0x1000) >> 12) as usize][(address & 0x0fff) as usize] = value;
+                    },
+                    0x2000..=0x3eff => {
+                        let address = address & 0x0fff;
 
-                self.palette_table[address as usize] = value;
-            }
-            _ => panic!("Invalid address {}", address),
-        }
-    }
-
-    pub fn step(&mut self) -> u32 {
-        if self.scanline >= -1 && self.scanline <= 239 {
-            // if self.scanline == 0 && self.clock == 0 {
-            //     // self.clock = 1;
-            //     self.tick(1);
-            // }
-
-            if self.scanline == -1 && self.clock == 1 {
-                self.status.set_vertical_blank(false);
-            }
-
-            match self.clock {
-                1..=255 | 322..=337 => {
-                    match self.clock % 8 {
-                        1 => {
-                            self.next_name_table = self.internal_read(0x2000 | (self.vram.get() & 0xfff));
-
-                            self.background_shift_lo = (self.background_shift_lo & 0xFF00) | self.next_background_lo as u16;
-                            self.background_shift_hi = (self.background_shift_hi & 0xFF00) | self.next_background_hi as u16;
-
-                            self.attribute_table_lo = (self.next_attribute_table & 0x01 > 0) as u8;
-                            self.attribute_table_hi = (self.next_attribute_table & 0x02 > 0) as u8;
-                        },
-                        3 => {
-                            self.next_attribute_table = self.internal_read(0x23C0 | (((self.vram.nametable() as u16) << 10) | (((self.vram.coarse_y() / 4) as u16) << 3) | self.vram.coarse_y() as u16 / 4));
-
-                            if self.vram.coarse_y() & 0x02 > 0 {
-                                self.next_attribute_table >>= 4;
+                        match address {
+                            0x0000..=0x03ff => {
+                                self.name_table[0][(address & 0x03ff) as usize] = value;
+                            },
+                            0x0400..=0x07ff => {
+                                self.name_table[0][(address & 0x03ff) as usize] = value;
+                            },
+                            0x0800..=0x0bff => {
+                                self.name_table[1][(address & 0x03ff) as usize] = value;
+                            },
+                            0x0c00..=0x0fff => {
+                                self.name_table[1][(address & 0x03ff) as usize] = value;
                             }
+                            _ => (),
+                        }
+                    },
+                    0x3f00..=0x3fff => {
+                        let address = address & 0x001F;
+                        let address = match address {
+                            0x0010 => 0x0000,
+                            0x0014 => 0x0004,
+                            0x0018 => 0x0008,
+                            0x001c => 0x000c,
+                            _ => address,
+                        };
 
-                            if self.vram.coarse_x() & 0x02 > 0 {
-                                self.next_attribute_table >>= 2;
-                            }
-                        },
-                        5 => {
-                            self.next_background_lo = self.internal_read(self.control.background() as u16 * 0x1000 + self.next_name_table as u16 * 16 + self.vram.fine_y() as u16);
-                        },
-                        // 6 => {},
-                        7 => {
-                            self.next_background_hi = self.internal_read(self.control.background() as u16 * 0x1000 + self.next_name_table as u16 * 16 + self.vram.fine_y() as u16 + 8);
-                        },
-                        0 => {
-                            // ++horizonal
-                        },
-                        _ => (),
+                        self.palette_table[address as usize] = value;
                     }
-                },
-                256 => {
-                    // ++vertial
-                }
-                _ => (),
-            }
-
-            if self.mask.background() && self.scanline >= 0 && self.scanline < 240 && self.clock < 256  {
-                let offset = 0x8000 >> self.fine_x;
-
-                let pixel = ((((self.background_shift_hi & offset) > 0) as u8) << 1) | ((self.background_shift_lo & offset) > 0) as u8;
-
-                let palette = ((((self.attribute_table_hi & offset as u8) > 0) as u8) << 1) | ((self.attribute_table_lo & offset as u8) > 0) as u8;
-
-                let color = self.palette_color(palette as u8, pixel as u8);
-
-                let x = self.clock as u32;
-                let y = self.scanline as u32;
-
-                self.pixels[((y * 256 + x) * 3) as usize] = color.0;
-                self.pixels[((y * 256 + x) * 3 + 1) as usize] = color.1;
-                self.pixels[((y * 256 + x) * 3 + 2) as usize] = color.2;
-            }
-        }
-
-        if self.scanline >= 241 && self.scanline <= 260 {
-            if self.clock == 1 {
-                self.status.set_vertical_blank(true);
-
-                if self.control.nmi() {
-                    self.nmi = true;
+                    _ => panic!("Invalid address {}", address),
                 }
             }
+            Some(_) => (),
         }
-
-        self.tick(1);
-
-        if self.clock >= 341 {
-            self.clock = 0;
-            self.scanline += 1;
-
-            if self.scanline >= 261 {
-                self.scanline = -1;
-            }
-        }
-
-        self.clock
-    }
-
-    fn tick(&mut self, cycles: u8) {
-        self.clock += cycles as u32;
     }
 
     pub fn palette_color(&self, palette: u8, index: u8) -> Color {
@@ -493,5 +471,410 @@ impl Ppu {
         }
 
         pixels
+    }
+
+    fn output(&mut self) {
+        if !self.mask.background() {
+            return;
+        }
+
+        let offset = 0x8000 >> self.fine_x;
+
+        let pixel = ((((self.data.shift_background_high & offset) > 0) as u8) << 1) | ((self.data.shift_background_low & offset) > 0) as u8;
+
+        let palette = ((((self.data.shift_attribute_high & offset) > 0) as u8) << 1) | ((self.data.shift_attribute_low & offset) > 0) as u8;
+
+        let color = self.palette_color(palette as u8, pixel as u8);
+
+        let x = self.h as u32 - 2;
+        let y = self.v as u32;
+
+        if x < 256 && y < 240 {
+            self.pixels[((y * 256 + x) * 3) as usize] = color.0;
+            self.pixels[((y * 256 + x) * 3 + 1) as usize] = color.1;
+            self.pixels[((y * 256 + x) * 3 + 2) as usize] = color.2;
+        }
+    }
+
+    fn shift_background(&mut self) {
+        self.data.shift_background_low <<= 1;
+        self.data.shift_background_high <<= 1;
+        self.data.shift_attribute_low <<= 1;
+        self.data.shift_attribute_high <<= 1;
+    }
+
+    fn shift_sprite(&mut self) {
+    }
+
+    fn reload_background(&mut self) {
+        self.data.shift_background_low = (self.data.shift_background_low & 0xFF00) | self.data.background_low as u16;
+        self.data.shift_background_high = (self.data.shift_background_high & 0xFF00) | self.data.background_high as u16;
+
+        self.data.shift_attribute_low = (self.data.shift_attribute_low & 0xff00) | if self.data.attribute_table & 0x01 > 0 { 0xff } else { 0x00 };
+        self.data.shift_attribute_high = (self.data.shift_attribute_high & 0xff00) | if self.data.attribute_table & 0x02 > 0 { 0xff } else { 0x00 };
+    }
+
+    fn fetch_name_table(&mut self) {
+        if !self.mask.background() {
+            return;
+        }
+
+        let address = 0x2000 | (self.vram.get() & 0x0fff);
+
+        self.data.name_table = self.internal_read(address);
+    }
+
+    fn fetch_attribute_table(&mut self) {
+        if !self.mask.background() {
+            return;
+        }
+
+        let address = 0x23c0
+            | ((self.vram.nametable_h() as u16) << 10)
+            | ((self.vram.nametable_v() as u16) << 11)
+            | (((self.vram.coarse_y() as u16) >> 2)) << 3
+            | ((self.vram.coarse_x() as u16) >> 2);
+
+        self.data.attribute_table = self.internal_read(address);
+
+        if self.vram.coarse_y() & 0x02 > 0 {
+            self.data.attribute_table >>= 4;
+        }
+
+        if self.vram.coarse_x() & 0x02 > 0 {
+            self.data.attribute_table >>= 2;
+        }
+
+        self.data.attribute_table &= 0x03;
+    }
+
+    fn fetch_low_backgorund(&mut self) {
+        if !self.mask.background() {
+            return;
+        }
+
+        let address = self.control.background() as u16 * 0x1000
+            + self.data.name_table as u16 * 16
+            + self.vram.fine_y() as u16;
+
+        self.data.background_low = self.internal_read(address);
+    }
+
+    fn fetch_high_background(&mut self) {
+        if !self.mask.background() {
+            return;
+        }
+
+        let address = self.control.background() as u16 * 0x1000
+            + self.data.name_table as u16 * 16
+            + self.vram.fine_y() as u16
+            + 8;
+
+        self.data.background_low = self.internal_read(address);
+    }
+
+    fn set_vertical_blank(&mut self) {
+        self.status.set_vertical_blank(true);
+
+        if self.control.nmi() {
+            self.nmi = true;
+        }
+    }
+
+    fn clear_vertical_blank(&mut self) {
+        self.status.set_vertical_blank(false);
+    }
+
+    fn increment_horizontal(&mut self) {
+        if !self.mask.background() {
+            return;
+        }
+
+        self.vram.set_coarse_x(self.vram.coarse_x() + 1);
+
+        if self.vram.coarse_x() == 31 {
+            self.vram.set_coarse_x(0);
+            self.vram.set_nametable_h(!self.vram.nametable_h());
+        }
+    }
+
+    fn increment_vertical(&mut self) {
+        if !self.mask.background() {
+            return;
+        }
+
+        if self.vram.fine_y() < 7 {
+            self.vram.set_fine_y(self.vram.fine_y() + 1);
+        } else {
+            self.vram.set_fine_y(0);
+
+            match self.vram.coarse_y() {
+                29 => {
+                    self.vram.set_coarse_y(0);
+                    self.vram.set_nametable_v(!self.vram.nametable_v());
+                },
+                31 => {
+                    self.vram.set_coarse_y(0);
+                },
+                _ => {
+                    self.vram.set_coarse_y(self.vram.coarse_y() + 1);
+                },
+            }
+        }
+    }
+
+    fn set_horizontal(&mut self) {
+        if !self.mask.background() {
+            return;
+        }
+
+        self.vram.set_nametable_h(self.vram_temp.nametable_h());
+        self.vram.set_coarse_x(self.vram_temp.coarse_x());
+    }
+
+    fn set_vertical(&mut self) {
+        if !self.mask.background() {
+            return;
+        }
+
+        self.vram.set_nametable_v(self.vram_temp.nametable_v());
+        self.vram.set_coarse_y(self.vram_temp.coarse_y());
+        self.vram.set_fine_y(self.vram_temp.fine_y());
+    }
+
+    fn secondary_oam_clear(&mut self) {
+        if !self.mask.sprite() {
+            return;
+        }
+    }
+
+    fn sprite_evaluation(&mut self) {
+        if !self.mask.sprite() {
+            return;
+        }
+    }
+
+
+    fn put_debug_pixel(&mut self, x: usize, y: usize, color: u32) {
+        self.pixels[(y * NUM_DOTS + x) * 3 + 0] = ((color >> 16) & 0xff) as u8;
+        self.pixels[(y * NUM_DOTS + x) * 3 + 1] = ((color >> 8) & 0xff) as u8;
+        self.pixels[(y * NUM_DOTS + x) * 3 + 2] = (color & 0xff) as u8;
+    }
+
+    pub fn step(&mut self) -> u32 {
+        // self.tick(1);
+
+        let event = self.events[self.v][self.h];
+
+        if event & EVENT_OUTPUT > 0 { self.output(); }
+        if event & EVENT_SHIFT_BACKGROUND > 0 { self.shift_background(); }
+        if event & EVENT_SHIFT_SPRITE > 0 { self.shift_sprite(); }
+        if event & EVENT_RELOAD_BACKGROUND > 0 { self.reload_background(); }
+        if event & EVENT_FETCH_NAME_TABLE > 0 { self.fetch_name_table(); }
+        if event & EVENT_FETCH_ATTRIBUTE_TABLE > 0 { self.fetch_attribute_table(); }
+        if event & EVENT_FETCH_LOW_BACKGORUND > 0 { self.fetch_low_backgorund(); }
+        if event & EVENT_FETCH_HIGH_BACKGROUND > 0 { self.fetch_high_background(); }
+        if event & EVENT_SET_VERTICAL_BLANK > 0 { self.set_vertical_blank(); }
+        if event & EVENT_CLEAR_VERTICAL_BLANK > 0 { self.clear_vertical_blank(); }
+        if event & EVENT_INCREMENT_HORIZONTAL > 0 { self.increment_horizontal(); }
+        if event & EVENT_INCREMENT_VERTICAL > 0 { self.increment_vertical(); }
+        if event & EVENT_SET_HORIZONTAL > 0 { self.set_horizontal(); }
+        if event & EVENT_SET_VERTICAL > 0 { self.set_vertical(); }
+        if event & EVENT_SECONDARY_OAM_CLEAR > 0 { self.secondary_oam_clear(); }
+        if event & EVENT_SPRITE_EVALUATION > 0 { self.sprite_evaluation(); }
+
+        self.h += 1;
+
+        if self.h >= NUM_DOTS {
+            self.h = 0;
+            self.v += 1;
+
+            if self.v >= NUM_SCANLINES {
+                self.v = 0;
+                self.odd_frame = !self.odd_frame;
+
+                if self.odd_frame && self.mask.background() {
+                    self.h += 1;
+                }
+
+                self.frame_ready = true;
+            }
+        }
+
+        self.h as u32
+    }
+
+    pub fn init(&mut self) {
+        let pre_render_line_events = self.build_pre_render_line();
+        let visible_line_events = self.build_visible_line();
+        let post_render_line_events = self.build_post_render_line();
+
+        for cycle in 0..240 {
+            self.events[cycle] = visible_line_events;
+        }
+
+        self.events[241] = post_render_line_events;
+
+        self.events[261] = pre_render_line_events;
+
+        // for scanline in 0..NUM_SCANLINES {
+        //     let events = self.events[scanline];
+
+        //     for dot in 0..NUM_DOTS {
+        //         let event = events[dot];
+
+        //         if event & EVENT_OUTPUT > 0 {  }
+        //         if event & EVENT_SHIFT_BACKGROUND > 0 {}
+        //         if event & EVENT_SHIFT_SPRITE > 0 {}
+        //         if event & EVENT_RELOAD_BACKGROUND > 0 {}
+        //         if event & EVENT_FETCH_NAME_TABLE > 0 { self.put_debug_pixel(dot, scanline, 0xcc6f00); }
+        //         if event & EVENT_FETCH_ATTRIBUTE_TABLE > 0 { self.put_debug_pixel(dot, scanline, 0xcc6f00); }
+        //         if event & EVENT_FETCH_LOW_BACKGORUND > 0 { self.put_debug_pixel(dot, scanline, 0xcc6f00); }
+        //         if event & EVENT_FETCH_HIGH_BACKGROUND > 0 { self.put_debug_pixel(dot, scanline, 0xcc6f00); }
+        //         if event & EVENT_SET_VERTICAL_BLANK > 0 { self.put_debug_pixel(dot, scanline, 0x00ff00); }
+        //         if event & EVENT_CLEAR_VERTICAL_BLANK > 0 { self.put_debug_pixel(dot, scanline, 0x00ff00); }
+        //         if event & EVENT_INCREMENT_HORIZONTAL > 0 { self.put_debug_pixel(dot, scanline, 0xff0000); }
+        //         if event & EVENT_INCREMENT_VERTICAL > 0 { self.put_debug_pixel(dot, scanline, 0x00ff00); }
+        //         if event & EVENT_SET_HORIZONTAL > 0 { self.put_debug_pixel(dot, scanline, 0xffff00); }
+        //         if event & EVENT_SET_VERTICAL > 0 { self.put_debug_pixel(dot, scanline, 0xffff00); }
+        //         if event & EVENT_SECONDARY_OAM_CLEAR > 0 {}
+        //         if event & EVENT_SPRITE_EVALUATION > 0 {}
+        //     }
+        // }
+    }
+
+    fn build_pre_render_line(&mut self) -> [u16; NUM_DOTS] {
+        let mut events = [0u16; NUM_DOTS];
+
+        events[1] |= EVENT_CLEAR_VERTICAL_BLANK;
+
+        for cycle in (1..=256).step_by(8) {
+            events[cycle + 0] |= EVENT_FETCH_NAME_TABLE;
+            events[cycle + 2] |= EVENT_FETCH_ATTRIBUTE_TABLE;
+            events[cycle + 4] |= EVENT_FETCH_LOW_BACKGORUND;
+            events[cycle + 6] |= EVENT_FETCH_HIGH_BACKGROUND;
+        }
+
+        for cycle in 2..=257 {
+            events[cycle] |= EVENT_SHIFT_BACKGROUND;
+            events[cycle] |= EVENT_SHIFT_SPRITE;
+        }
+
+        for cycle in (9..=257).step_by(8) {
+            events[cycle] |= EVENT_RELOAD_BACKGROUND;
+        }
+
+        for cycle in (8..=256).step_by(8) {
+            events[cycle] |= EVENT_INCREMENT_HORIZONTAL;
+        }
+
+        events[256] |= EVENT_INCREMENT_VERTICAL;
+        events[257] |= EVENT_SET_HORIZONTAL;
+
+        // for cycle in (257..=319).step_by(8) {
+        //     events[cycle] |= EVENT_FETCH_SPRITE;
+        // }
+
+        for cycle in 280..=304 {
+            events[cycle] |= EVENT_SET_VERTICAL;
+        }
+
+        for cycle in (321..=336).step_by(8) {
+            events[cycle + 0] |= EVENT_FETCH_NAME_TABLE;
+            events[cycle + 2] |= EVENT_FETCH_ATTRIBUTE_TABLE;
+            events[cycle + 4] |= EVENT_FETCH_LOW_BACKGORUND;
+            events[cycle + 6] |= EVENT_FETCH_HIGH_BACKGROUND;
+        }
+
+        for cycle in 322..=337 {
+            events[cycle] |= EVENT_SHIFT_BACKGROUND;
+        }
+
+        for cycle in (329..=337).step_by(8) {
+            events[cycle] |= EVENT_RELOAD_BACKGROUND;
+        }
+
+        for cycle in (328..=336).step_by(8) {
+            events[cycle] |= EVENT_INCREMENT_HORIZONTAL;
+        }
+
+        for cycle in (337..=340).step_by(4) {
+            events[cycle] |= EVENT_FETCH_NAME_TABLE;
+            events[cycle + 2] |= EVENT_FETCH_NAME_TABLE;
+        }
+
+        events
+    }
+
+    fn build_visible_line(&mut self) -> [u16; NUM_DOTS] {
+        let mut events = [0u16; NUM_DOTS];
+
+        events[1] |= EVENT_SECONDARY_OAM_CLEAR;
+        events[65] |= EVENT_SPRITE_EVALUATION;
+
+        for cycle in 2..=257 {
+            events[cycle] |= EVENT_OUTPUT;
+        }
+
+        for cycle in (1..=256).step_by(8) {
+            events[cycle + 0] |= EVENT_FETCH_NAME_TABLE;
+            events[cycle + 2] |= EVENT_FETCH_ATTRIBUTE_TABLE;
+            events[cycle + 4] |= EVENT_FETCH_LOW_BACKGORUND;
+            events[cycle + 6] |= EVENT_FETCH_HIGH_BACKGROUND;
+        }
+
+        for cycle in 2..=257 {
+            events[cycle] |= EVENT_SHIFT_BACKGROUND;
+            events[cycle] |= EVENT_SHIFT_SPRITE;
+        }
+
+        for cycle in (9..=257).step_by(8) {
+            events[cycle] |= EVENT_RELOAD_BACKGROUND;
+        }
+
+        for cycle in (8..=256).step_by(8) {
+            events[cycle] |= EVENT_INCREMENT_HORIZONTAL;
+        }
+
+        events[256] |= EVENT_INCREMENT_VERTICAL;
+        events[257] |= EVENT_SET_HORIZONTAL;
+
+        // for cycle in (257..=319).step_by(8) {
+        //     events[cycle] |= EVENT_FETCH_SPRITE;
+        // }
+
+        for cycle in (321..=336).step_by(8) {
+            events[cycle + 0] |= EVENT_FETCH_NAME_TABLE;
+            events[cycle + 2] |= EVENT_FETCH_ATTRIBUTE_TABLE;
+            events[cycle + 4] |= EVENT_FETCH_LOW_BACKGORUND;
+            events[cycle + 6] |= EVENT_FETCH_HIGH_BACKGROUND;
+        }
+
+        for cycle in 322..=337 {
+            events[cycle] |= EVENT_SHIFT_BACKGROUND;
+        }
+
+        for cycle in (329..=337).step_by(8) {
+            events[cycle] |= EVENT_RELOAD_BACKGROUND;
+        }
+
+        for cycle in (328..=336).step_by(8) {
+            events[cycle] |= EVENT_INCREMENT_HORIZONTAL;
+        }
+
+        for cycle in (337..=340).step_by(4) {
+            events[cycle] |= EVENT_FETCH_NAME_TABLE;
+            events[cycle + 2] |= EVENT_FETCH_NAME_TABLE;
+        }
+
+        events
+    }
+
+    fn build_post_render_line(&mut self) -> [u16; NUM_DOTS] {
+        let mut events = [0u16; NUM_DOTS];
+
+        events[1] |= EVENT_SET_VERTICAL_BLANK;
+
+        events
     }
 }
