@@ -2,6 +2,7 @@ use std::io::{BufReader};
 use std::io::prelude::*;
 use std::fs::File;
 
+use nes::nes::Nes;
 use nes::cpu::Cpu;
 
 #[test]
@@ -10,17 +11,18 @@ fn nestest_instructions() {
     let mut log = BufReader::new(log);
     let mut log_buffer = String::new();
 
-    let mut cpu = Cpu::new();
-    cpu.load("testroms\\nestest.nes");
-    cpu.pc(0xc000);
-    cpu.sp(0xfd);
-    cpu.p(0x24);
-    cpu.debug();
+    let cpu = Cpu::new();
+    let mut nes = Nes::new(cpu);
+
+    nes.insert_cartridge("testroms\\nestest.nes");
+    nes.cpu.reset();
+    nes.cpu.pc = 0xc000;
+    nes.cpu.debug();
 
     loop {
-        cpu.step();
+        nes.step();
 
-        let state = cpu.debug_state().unwrap();
+        let state = nes.cpu.debug_state().unwrap();
         let instruction = format!("{:10}", format!("{:02X?}", state.instruction).replace("[", "").replace("]", "").replace(",", ""));
         let debug_str = format!("{:48} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} PPU: {:3}  X CYC:XXX", format!("{:04X}  {}{}", state.pc, instruction, "---"), state.a, state.x, state.y, state.p, state.sp, "X");
 
@@ -44,18 +46,18 @@ fn nestest_clock() {
     let mut log = BufReader::new(log);
     let mut log_buffer = String::new();
 
-    let mut cpu = Cpu::new();
-    cpu.load("testroms\\nestest.nes");
-    cpu.pc(0xc000);
-    cpu.sp(0xfd);
-    cpu.p(0x24);
-    cpu.clock(7);
-    cpu.debug();
+    let cpu = Cpu::new();
+    let mut nes = Nes::new(cpu);
+
+    nes.insert_cartridge("testroms\\nestest.nes");
+    nes.cpu.reset();
+    nes.cpu.pc = 0xc000;
+    nes.cpu.debug();
 
     loop {
-        cpu.step();
+        nes.step();
 
-        let state = cpu.debug_state().unwrap();
+        let state = nes.cpu.debug_state().unwrap();
         let instruction = format!("{:10}", format!("{:02X?}", state.instruction).replace("[", "").replace("]", "").replace(",", ""));
         let debug_str = format!("{:48} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} PPU:{:3}, X CYC:{}", format!("{:04X}  {}{}", state.pc, instruction, "---"), state.a, state.x, state.y, state.p, state.sp, "X", state.clock);
 

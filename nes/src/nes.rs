@@ -19,12 +19,10 @@ impl Nes {
         }
     }
 
-    pub fn insert_cartridge(&mut self) {
+    pub fn insert_cartridge(&mut self, rom: &str) {
         let cartridge = Rc::new(RefCell::new(Cartridge::new()));
-        // cartridge.borrow_mut().load("nes\\testroms\\instr_test-v5\\rom_singles\\01-basics.nes");
-        // cartridge.borrow_mut().load("nes\\testroms\\nestest.nes");
-        // cartridge.borrow_mut().load("debug\\roms\\Balloon Fight (USA).nes");
-        cartridge.borrow_mut().load("debug\\roms\\Donkey Kong (World) (Rev A).nes");
+
+        cartridge.borrow_mut().load(rom);
 
         self.cpu.bus.insert_cartridge(cartridge);
     }

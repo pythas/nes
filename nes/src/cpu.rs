@@ -120,7 +120,7 @@ impl Cpu {
         self.x = 0;
         self.y = 0;
         self.sp = 0xfd;
-        self.p = 0x20;
+        self.p = 0x24;
         self.clock = 7;
     }
 
