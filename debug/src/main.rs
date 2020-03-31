@@ -150,7 +150,10 @@ pub fn main() {
     let mut nes = Nes::new(cpu);
 
     // nes.insert_cartridge("nes\\testroms\\instr_test-v5\\rom_singles\\01-basics.nes");
-    nes.insert_cartridge("nes\\testroms\\nestest.nes");
+    // nes.insert_cartridge("nes\\testroms\\instr_test-v5\\rom_singles\\02-implied.nes");
+    nes.insert_cartridge("nes\\testroms\\instr_test-v5\\rom_singles\\03-immediate.nes");
+    // nes.insert_cartridge("nes\\testroms\\instr_test-v5\\rom_singles\\04-zero_page.nes");
+    // nes.insert_cartridge("nes\\testroms\\nestest.nes");
     // nes.insert_cartridge("debug\\roms\\Balloon Fight (USA).nes");
     // nes.insert_cartridge("debug\\roms\\Donkey Kong (World) (Rev A).nes");
     nes.cpu.reset();

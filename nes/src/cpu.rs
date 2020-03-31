@@ -181,7 +181,6 @@ impl Cpu {
             0xf8 => { self.sed(Mode::Implied); self.tick(2); },
 
             // NOP
-            0x80 => { self.nop(Mode::Immediate); self.tick(2); },
             0x0c => { self.nop(Mode::Absolute); self.tick(4) },
             0x1c | 0x3c | 0x5c | 0x7c | 0xdc | 0xfc => { self.nop(Mode::AbsoluteX); self.tick(4); },
             0x04 | 0x44 | 0x64 => { self.nop(Mode::ZeroPage); self.tick(3); },
@@ -423,6 +422,9 @@ impl Cpu {
             0x94 => { self.sty(Mode::ZeroPageX); self.tick(4); },
             0x8c => { self.sty(Mode::Absolute); self.tick(4); },
 
+            // SKB
+            0x80 | 0x82 | 0x89 | 0xc2 | 0xe2 => { self.skb(Mode::Immediate); self.tick(2); },
+
             _ => panic!("opcode {:x} not implemented at {:x}.", opcode, self.pc),
         }
 
@@ -442,31 +444,36 @@ impl Cpu {
             });
         }
 
-        // // For blargg test
-        // let mut done = false;
-        // let mut s = String::new();
-        // let mut address = 0x6004;
+        // For blargg test
+        let c = self.bus.read(0x6000, true);
 
-        // while !done {
-        //     let c = self.bus.read(address, true);
+        match c {
+            0x00..=0x7f => {
+                println!("{:x}", c);
 
-        //     if c == 0x00 {
-        //         done = true;
-        //     } else {
-        //         s.push(c as char);
-        //         address += 1;
-        //     }
-        // }
+                let mut done = false;
+                let mut s = String::new();
+                let mut address = 0x6004;
 
-        // if !s.is_empty() {
-        //     println!("{}", s);
-        // }
+                while !done {
+                    let c = self.bus.read(address, true);
 
-        // let c = self.bus.read(address, true);
+                    if c == 0x00 {
+                        done = true;
+                    } else {
+                        s.push(c as char);
+                        address += 1;
+                    }
+                }
 
-        // if c != 0x00 {
-        //     println!("{:x}", c);
-        // }
+                if !s.is_empty() {
+                    println!("{}", s);
+                }
+
+                panic!("Test");
+            }
+            _ => (),
+        }
 
         self.clock
     }
@@ -1309,6 +1316,10 @@ impl Cpu {
         self.set_flag(Flag::NegativeFlag, negative);
 
         self.a = (result & 0xff) as u8;
+    }
+
+    fn skb(&mut self, mode: Mode) {
+        self.read_operand(mode);
     }
 
     pub fn nmi(&mut self) {

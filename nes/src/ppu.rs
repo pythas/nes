@@ -252,9 +252,6 @@ impl Ppu {
         }
     }
 
-    fn set_cartridge(&mut self) {
-    }
-
     pub fn read(&mut self, address: u16, debug: bool) -> u8 {
         match address % 8 {
             0x0000 => {

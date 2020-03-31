@@ -15,25 +15,28 @@ pub struct iNES_000 {
 impl Mapper for iNES_000 {
     fn prg_read_address(&self, address: u16) -> Option<u16> {
         match address {
-            0x8000..=0xffff => {
-                if self.prg_banks > 1 {
-                    Some(address & 0x7fff)
-                } else {
-                    Some(address & 0x3fff)
-                }
-            }
+            0x6000..=0x7fff => {
+                Some(address - 0x6000)
+            },
+            0x8000..=0xbfff => {
+                Some(address - 0x8000)
+            },
+            0xc000..=0xffff => {
+                Some(address - 0xc000 + (self.prg_banks as u16 - 1) * 0x4000)
+            },
             _ => None,
         }
     }
 
     fn prg_write_address(&self, address: u16) -> Option<u16> {
         match address {
-            0x8000..=0xffff => {
-                if self.prg_banks > 1 {
-                    Some(address & 0x7fff)
-                } else {
-                    Some(address & 0x3fff)
-                }
+            0x6000..=0x7fff => {
+                Some(address - 0x6000)
+                // if self.prg_banks > 1 {
+                //     Some(address & 0x7fff)
+                // } else {
+                //     Some(address & 0x3fff)
+                // }
             }
             _ => None,
         }
@@ -54,7 +57,7 @@ impl Mapper for iNES_000 {
                 if self.chr_banks == 0 {
                     Some(address)
                 } else {
-                    None
+                    unimplemented!()
                 }
             }
             _ => None,

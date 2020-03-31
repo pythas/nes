@@ -55,11 +55,11 @@ impl Cartridge {
         let prg_size = self.prg_banks as usize * 16384;
         let chr_size = self.chr_banks as usize * 8192;
         let flags_6 = rom[6];
-        let _flags_7 = rom[7];
+        let flags_7 = rom[7];
         let _flags_8 = rom[8];
         let _flags_9 = rom[9];
         let _flags_10 = rom[10];
-        let mapper = flags_6 & 0xf0;
+        let mapper = (flags_6 >> 4) | (flags_7 & 0xf0);
         let trainer = false;
         let _mirroring = Mirroring::Horizontal;
 
@@ -74,7 +74,7 @@ impl Cartridge {
             0x0000 => {
                 self.mapper = Some(Box::new(iNES_000 { prg_banks: self.prg_banks, chr_banks: self.chr_banks }));
             },
-            _ => unimplemented!(),
+            _ => unimplemented!("{:04x}", mapper),
         }
     }
 
