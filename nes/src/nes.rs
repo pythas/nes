@@ -1,7 +1,8 @@
-use std::{thread, time};
+use std::rc::Rc;
+use std::cell::RefCell;
 
 use crate::cpu::Cpu;
-use crate::ppu::Ppu;
+use crate::cartridge::Cartridge;
 
 pub struct Nes {
     pub cpu: Cpu,
@@ -18,6 +19,16 @@ impl Nes {
         }
     }
 
+    pub fn insert_cartridge(&mut self) {
+        let cartridge = Rc::new(RefCell::new(Cartridge::new()));
+        // cartridge.borrow_mut().load("nes\\testroms\\instr_test-v5\\rom_singles\\01-basics.nes");
+        // cartridge.borrow_mut().load("nes\\testroms\\nestest.nes");
+        // cartridge.borrow_mut().load("debug\\roms\\Balloon Fight (USA).nes");
+        cartridge.borrow_mut().load("debug\\roms\\Donkey Kong (World) (Rev A).nes");
+
+        self.cpu.bus.insert_cartridge(cartridge);
+    }
+
     pub fn step(&mut self) {
         let delta_cpu_clock = self.cpu.step() - self.cpu_clock;
 
@@ -29,9 +40,13 @@ impl Nes {
         }
 
         self.cpu_clock += delta_cpu_clock;
+    }
 
-        // println!("CPU: {}", self.cpu_clock);
+    pub fn render_frame(&mut self) {
+        self.cpu.bus.ppu.frame_ready = false;
 
-        // thread::sleep(time::Duration::from_millis(100));
+        while !self.cpu.bus.ppu.frame_ready {
+            self.step();
+        }
     }
 }

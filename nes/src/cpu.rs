@@ -442,16 +442,16 @@ impl Cpu {
             });
         }
 
-        // For blargg test
+        // // For blargg test
         // let mut done = false;
         // let mut s = String::new();
-        // let mut address = 0x6000;
+        // let mut address = 0x6004;
 
         // while !done {
         //     let c = self.bus.read(address, true);
 
         //     if c == 0x00 {
-        //         done =true;
+        //         done = true;
         //     } else {
         //         s.push(c as char);
         //         address += 1;
@@ -460,6 +460,12 @@ impl Cpu {
 
         // if !s.is_empty() {
         //     println!("{}", s);
+        // }
+
+        // let c = self.bus.read(address, true);
+
+        // if c != 0x00 {
+        //     println!("{:x}", c);
         // }
 
         self.clock
@@ -813,7 +819,7 @@ impl Cpu {
     fn dec(&mut self, mode: Mode) {
         let address = self.read_address(mode, true);
         let operand = self.bus.read(address, false).wrapping_sub(1);
-// println!("{:x}", operand);
+
         self.set_flag_if_negative(operand);
         self.set_flag_if_zero(operand);
 
@@ -1306,8 +1312,6 @@ impl Cpu {
     }
 
     pub fn nmi(&mut self) {
-        // self.read_address(mode, true);
-
         self.set_flag(Flag::BreakCommand, 1);
 
         let address = self.bus.read(0xfffa, false) as u16 | (self.bus.read(0xfffb, false) as u16) << 8;

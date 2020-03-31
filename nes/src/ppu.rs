@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use std::cell::{RefCell};
+use std::cell::{RefCell, RefMut};
 
 use crate::cartridge::Cartridge;
 
@@ -184,7 +184,7 @@ impl Data {
 }
 
 pub struct Ppu {
-    cartridge: Rc<RefCell<Cartridge>>,
+    pub cartridge: Option<Rc<RefCell<Cartridge>>>,
     pub h: usize,
     pub v: usize,
     control: Control,
@@ -220,9 +220,9 @@ pub struct Ppu {
 }
 
 impl Ppu {
-    pub fn new(cartridge: Rc<RefCell<Cartridge>>) -> Ppu {
+    pub fn new() -> Ppu {
         Ppu {
-            cartridge,
+            cartridge: None,
             h: 0,
             v: 0,
             control: Control(0x00),
@@ -250,6 +250,9 @@ impl Ppu {
 
             frame_ready: false,
         }
+    }
+
+    fn set_cartridge(&mut self) {
     }
 
     pub fn read(&mut self, address: u16, debug: bool) -> u8 {
@@ -345,7 +348,12 @@ impl Ppu {
     fn internal_read(&self, address: u16) -> u8 {
         let address = address & 0x3fff;
 
-        match self.cartridge.borrow().chr_read(address) {
+        let cartridge_read = match self.cartridge.as_ref() {
+            Some(cartridge) => cartridge.borrow_mut().chr_read(address),
+            None => None,
+        };
+
+        match cartridge_read {
             None => {
                 match address {
                     0x0000..=0x1fff => {
@@ -392,7 +400,12 @@ impl Ppu {
     fn internal_write(&mut self, address: u16, value: u8) {
         let address = address & 0x3fff;
 
-        match self.cartridge.borrow_mut().chr_write(address, value) {
+        let cartridge_write = match self.cartridge.as_ref() {
+            Some(cartridge) => cartridge.borrow_mut().chr_write(address, value),
+            None => None,
+        };
+
+        match cartridge_write {
             None => {
                 match address {
                     0x0000..=0x1fff => {

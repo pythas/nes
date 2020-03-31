@@ -15,8 +15,8 @@ use nes::cpu::Cpu;
 
 static SCREEN_WIDTH: u32 = 640;
 static SCREEN_HEIGHT: u32 = 480;
-static REAL_SCREEN_WIDTH: u32 = 1300;
-static REAL_SCREEN_HEIGHT: u32 = 960;
+static REAL_SCREEN_WIDTH: u32 = 1024;
+static REAL_SCREEN_HEIGHT: u32 = 768;
 static NES_SCREEN_WIDTH: u32 = 256;
 static NES_SCREEN_HEIGHT: u32 = 240;
 
@@ -72,6 +72,7 @@ impl<'a> TextRenderer<'a> {
             symbol_rects,
         }
     }
+
     pub fn render(
         &mut self,
         p: Point,
@@ -148,6 +149,8 @@ pub fn main() {
     let cpu = Cpu::new();
     let mut nes = Nes::new(cpu);
 
+    nes.insert_cartridge();
+
     nes.cpu.reset();
     nes.cpu.debug();
 
@@ -191,7 +194,13 @@ pub fn main() {
         }
 
         if !halt {
-            nes.step();
+            // nes.step();
+            nes.render_frame();
+        }
+
+
+        if nes.cpu.bus.ppu.v == 260 && nes.cpu.bus.ppu.h < 10 {
+            println!("S");
         }
 
         canvas.set_logical_size(REAL_SCREEN_WIDTH, REAL_SCREEN_HEIGHT).unwrap();
@@ -201,7 +210,7 @@ pub fn main() {
             .update(None, &*nes.cpu.bus.ppu.pixels, (NES_SCREEN_WIDTH * 3) as usize)
             .unwrap();
 
-        canvas.copy(&texture, None, Rect::new(0, 0, NES_SCREEN_WIDTH * 3, NES_SCREEN_HEIGHT * 3)).unwrap();
+        canvas.copy(&texture, None, Rect::new(0, 0, NES_SCREEN_WIDTH * 2, NES_SCREEN_HEIGHT * 2)).unwrap();
 
         if draw_code {
             // Draw CPU state
@@ -253,7 +262,7 @@ pub fn main() {
                     }
                 },
                 None => {
-                    println!("Could not find PC {:04x} in disassembly", nes.cpu.pc);
+                    // println!("Could not find PC {:04x} in disassembly", nes.cpu.pc);
                 }
             }
         }
