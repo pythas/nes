@@ -886,6 +886,8 @@ impl Cpu {
     fn brk(&mut self, mode: Mode) {
         self.read_address(mode, true);
 
+        self.pc += 1;
+
         self.set_flag(Flag::BreakCommand, 1);
 
         let address = self.bus.read(0xfffe, false) as u16 | (self.bus.read(0xffff, false) as u16) << 8;
@@ -894,6 +896,7 @@ impl Cpu {
         self.push(self.pc as u8);
         self.push(self.p);
 
+        self.set_flag(Flag::BreakCommand, 0);
         self.set_flag(Flag::InterruptDisable, 1);
 
         self.pc = address;
