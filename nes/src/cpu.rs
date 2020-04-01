@@ -466,35 +466,35 @@ impl Cpu {
         }
 
         // For blargg test
-        let c = self.bus.read(0x6000, true);
+        // let c = self.bus.read(0x6000, true);
 
-        match c {
-            0x00..=0x7f => {
-                println!("{:x}", c);
+        // match c {
+        //     0x00..=0x7f => {
+        //         println!("{:x}", c);
 
-                let mut done = false;
-                let mut s = String::new();
-                let mut address = 0x6004;
+        //         let mut done = false;
+        //         let mut s = String::new();
+        //         let mut address = 0x6004;
 
-                while !done {
-                    let c = self.bus.read(address, true);
+        //         while !done {
+        //             let c = self.bus.read(address, true);
 
-                    if c == 0x00 {
-                        done = true;
-                    } else {
-                        s.push(c as char);
-                        address += 1;
-                    }
-                }
+        //             if c == 0x00 {
+        //                 done = true;
+        //             } else {
+        //                 s.push(c as char);
+        //                 address += 1;
+        //             }
+        //         }
 
-                if !s.is_empty() {
-                    println!("{}", s);
-                }
+        //         if !s.is_empty() {
+        //             println!("{}", s);
+        //         }
 
-                panic!("Test");
-            }
-            _ => (),
-        }
+        //         panic!("Test");
+        //     }
+        //     _ => (),
+        // }
 
         self.clock
     }
