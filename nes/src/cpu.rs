@@ -440,6 +440,12 @@ impl Cpu {
             // AXS
             0xcb => { self.axs(Mode::Immediate); self.tick(2); },
 
+            // SYA
+            0x9c => { self.sya(Mode::AbsoluteX); self.tick(5); }, // FIXME: Double check cycles
+
+            // SXA
+            0x9e => { self.sxa(Mode::AbsoluteY); self.tick(5); }, // FIXME: Doubel check cycles
+
             _ => panic!("opcode {:x} not implemented at {:x}.", opcode, self.pc),
         }
 
@@ -1409,6 +1415,26 @@ impl Cpu {
 
         self.set_flag_if_negative(self.x);
         self.set_flag_if_zero(self.x);
+    }
+
+    fn sya(&mut self, mode: Mode) {
+        let mut address = self.read_address(mode, false);
+        let address_high = address >> 8;
+
+        address = ((self.y as u16 & (address_high + 1)) << 8) | address & 0xff;
+        let result = self.y as u16 & (address_high + 1);
+
+        self.bus.write(address, result as u8);
+    }
+
+    fn sxa(&mut self, mode: Mode) {
+        let mut address = self.read_address(mode, false);
+        let address_high = address >> 8;
+
+        address = ((self.x as u16 & (address_high + 1)) << 8) | address & 0xff;
+        let result = self.x as u16 & (address_high + 1);
+
+        self.bus.write(address, result as u8);
     }
 
     pub fn nmi(&mut self) {
